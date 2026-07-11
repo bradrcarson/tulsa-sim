@@ -1,7 +1,9 @@
 import type { ParcelInfo } from '../layers/parcels';
+import type { CameraRec } from '../layers/cameras';
 
 const el = () => document.getElementById('popup')!;
 const body = () => document.getElementById('popup-body')!;
+const title = () => document.getElementById('popup-title')!;
 
 const money = (v: unknown): string =>
   typeof v === 'number' && isFinite(v) && v > 0
@@ -18,12 +20,35 @@ export function initPopup() {
 }
 
 export function showLoading() {
+  title().textContent = 'Parcel Intelligence';
   body().innerHTML = `<div class="loading">querying assessor…</div>`;
   el().classList.add('open');
   syncLegend();
 }
 
+/**
+ * Traffic camera details. No public still-image URL pattern exists for
+ * OKtraffic (streams are negotiated per session), so the card deep-links
+ * into the official map — documented in README.
+ */
+export function showCamera(cam: CameraRec, oktrafficUrl: string) {
+  title().textContent = 'Traffic Camera';
+  body().innerHTML = `
+    <div class="addr">${cam.loc}</div>
+    <div class="row"><span class="k">Facing</span><span class="v">${cam.dir || '—'}</span></div>
+    <div class="row"><span class="k">Camera ID</span><span class="v">#${cam.id}</span></div>
+    <div class="row"><span class="k">Position</span><span class="v">${cam.lat.toFixed(4)}, ${cam.lon.toFixed(4)}</span></div>
+    <a class="cam-link" href="${oktrafficUrl}" target="_blank" rel="noopener">
+      ▶ Live view on OKtraffic.org
+    </a>
+    <div class="cam-note">ODOT streams are session-negotiated; stills are not directly embeddable.</div>
+  `;
+  el().classList.add('open');
+  syncLegend();
+}
+
 export function showParcel(info: ParcelInfo) {
+  title().textContent = 'Parcel Intelligence';
   const a = info.attributes;
   const saleDateMs = a['SaleDate'];
   let sale = '—';
