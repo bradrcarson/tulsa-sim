@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tulsa Sim — 3D Digital Twin</title>
+    <link rel="preconnect" href="https://map11.incog.org" />
+    <style>
+      :root {
+        --bg: #0a0e14;
+        --panel: rgba(13, 19, 28, 0.92);
+        --border: rgba(90, 160, 220, 0.25);
+        --text: #cfe3f5;
+        --text-dim: #7a93ab;
+        --accent: #46b4ff;
+        --accent-warm: #ff9c46;
+        --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+        --sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { height: 100%; overflow: hidden; background: var(--bg); font-family: var(--sans); }
+      #app { position: fixed; inset: 0; }
+      canvas { display: block; }
+
+      .panel {
+        position: fixed;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        color: var(--text);
+        backdrop-filter: blur(12px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+      }
+
+      /* ── Header / brand ─────────────────────────── */
+      #brand {
+        top: 16px; left: 16px;
+        padding: 10px 16px;
+        display: flex; flex-direction: column; gap: 2px;
+        pointer-events: none;
+        z-index: 10;
+      }
+      #brand h1 {
+        font-size: 15px; font-weight: 700; letter-spacing: 0.14em;
+        text-transform: uppercase; color: var(--accent);
+        font-family: var(--mono);
+      }
+      #brand span { font-size: 10.5px; color: var(--text-dim); letter-spacing: 0.05em; }
+
+      /* ── Search ─────────────────────────────────── */
+      #search-wrap {
+        top: 16px; left: 50%; transform: translateX(-50%);
+        padding: 6px;
+        display: flex; gap: 6px;
+        z-index: 10;
+        width: min(420px, calc(100vw - 32px));
+      }
+      #search {
+        flex: 1;
+        background: rgba(10, 16, 24, 0.8);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        font-size: 13px;
+        padding: 8px 12px;
+        outline: none;
+        font-family: var(--mono);
+      }
+      #search:focus { border-color: var(--accent); }
+      #search::placeholder { color: var(--text-dim); }
+      #search-results {
+        position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+        background: var(--panel);
+        border: 1px solid var(--border); border-radius: 8px;
+        overflow: hidden;
+        display: none;
+      }
+      #search-results.open { display: block; }
+      #search-results button {
+        display: block; width: 100%;
+        text-align: left; padding: 9px 14px;
+        background: none; border: none; cursor: pointer;
+        color: var(--text); font-size: 12.5px; font-family: var(--sans);
+      }
+      #search-results button:hover { background: rgba(70, 180, 255, 0.12); }
+      #search-results .hint { padding: 8px 14px; font-size: 11px; color: var(--text-dim); }
+
+      /* ── Toolbar (layer toggles) ────────────────── */
+      #toolbar {
+        top: 80px; left: 16px;
+        padding: 12px 14px;
+        display: flex; flex-direction: column; gap: 10px;
+        z-index: 10;
+        min-width: 190px;
+      }
+      #toolbar h2 {
+        font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+        color: var(--text-dim); font-family: var(--mono); font-weight: 600;
+      }
+      .toggle-row { display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
+      .toggle-row input { display: none; }
+      .toggle-track {
+        width: 30px; height: 16px; border-radius: 9px;
+        background: rgba(120, 145, 170, 0.25);
+        position: relative; transition: background 0.18s;
+        flex-shrink: 0;
+      }
+      .toggle-track::after {
+        content: ''; position: absolute; top: 2px; left: 2px;
+        width: 12px; height: 12px; border-radius: 50%;
+        background: var(--text-dim); transition: all 0.18s;
+      }
+      .toggle-row input:checked + .toggle-track { background: rgba(70, 180, 255, 0.45); }
+      .toggle-row input:checked + .toggle-track::after { left: 16px; background: var(--accent); }
+      .toggle-row.warm input:checked + .toggle-track { background: rgba(255, 156, 70, 0.4); }
+      .toggle-row.warm input:checked + .toggle-track::after { background: var(--accent-warm); }
+      .toggle-label { font-size: 12.5px; }
+      .toggle-sub { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
+
+      #crime-filter {
+        display: none;
+        background: rgba(10, 16, 24, 0.8);
+        border: 1px solid var(--border); border-radius: 6px;
+        color: var(--text); font-size: 11.5px; padding: 5px 8px;
+        font-family: var(--mono); outline: none;
+        max-width: 100%;
+      }
+      #crime-filter.visible { display: block; }
+
+      /* ── Parcel popup ───────────────────────────── */
+      #popup {
+        display: none;
+        top: 80px; right: 16px;
+        width: 300px;
+        padding: 0;
+        z-index: 20;
+        overflow: hidden;
+      }
+      #popup.open { display: block; }
+      #popup .popup-head {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 11px 14px;
+        background: rgba(70, 180, 255, 0.08);
+        border-bottom: 1px solid var(--border);
+      }
+      #popup .popup-head h3 {
+        font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+        color: var(--accent); font-family: var(--mono); font-weight: 600;
+      }
+      #popup .popup-close {
+        background: none; border: none; color: var(--text-dim);
+        cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px;
+      }
+      #popup .popup-close:hover { color: var(--text); }
+      #popup .popup-body { padding: 12px 14px 14px; }
+      #popup .row { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px solid rgba(90, 160, 220, 0.08); }
+      #popup .row:last-child { border-bottom: none; }
+      #popup .k { font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; padding-top: 2px; flex-shrink: 0; }
+      #popup .v { font-size: 12.5px; text-align: right; font-family: var(--mono); }
+      #popup .v.money { color: #7fe0a7; }
+      #popup .loading { color: var(--text-dim); font-size: 12px; padding: 10px 0; text-align: center; }
+      #popup .addr { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #fff; }
+
+      /* ── Timeline ───────────────────────────────── */
+      #timeline {
+        bottom: 18px; left: 50%; transform: translateX(-50%);
+        width: min(560px, calc(100vw - 32px));
+        padding: 12px 20px 10px;
+        z-index: 10;
+      }
+      #timeline .tl-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+      #timeline .tl-title { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-dim); font-family: var(--mono); }
+      #timeline #tl-year { font-size: 20px; font-weight: 700; font-family: var(--mono); color: var(--accent); }
+      #timeline #tl-year.historic { color: var(--accent-warm); }
+      #tl-slider { width: 100%; -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--accent-warm), var(--accent)); outline: none; cursor: pointer; }
+      #tl-slider::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none;
+        width: 16px; height: 16px; border-radius: 50%;
+        background: #fff; border: 3px solid var(--accent);
+        cursor: grab; box-shadow: 0 0 10px rgba(70, 180, 255, 0.6);
+      }
+      #tl-slider::-moz-range-thumb {
+        width: 12px; height: 12px; border-radius: 50%;
+        background: #fff; border: 3px solid var(--accent); cursor: grab;
+      }
+      #timeline .tl-marks { display: flex; justify-content: space-between; margin-top: 5px; font-size: 10px; font-family: var(--mono); color: var(--text-dim); }
+      #timeline .tl-marks span.active { color: var(--accent-warm); }
+
+      /* ── Status / attribution ───────────────────── */
+      #status {
+        bottom: 18px; left: 16px;
+        padding: 8px 12px;
+        font-size: 10.5px; color: var(--text-dim); font-family: var(--mono);
+        z-index: 10;
+        max-width: 300px;
+      }
+      #status .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #57d98a; margin-right: 6px; vertical-align: 1px; }
+      #status .dot.busy { background: var(--accent-warm); animation: pulse 1s infinite; }
+      @keyframes pulse { 50% { opacity: 0.3; } }
+
+      #attribution {
+        bottom: 18px; right: 16px;
+        padding: 6px 10px;
+        font-size: 9.5px; color: var(--text-dim);
+        z-index: 10;
+      }
+      #attribution a { color: var(--text-dim); }
+
+      /* ── Legend for crime heat ──────────────────── */
+      #crime-legend {
+        display: none;
+        top: 80px; right: 330px;
+        padding: 10px 12px;
+        z-index: 9;
+        font-size: 10px; font-family: var(--mono); color: var(--text-dim);
+      }
+      #crime-legend.visible { display: block; }
+      #crime-legend.no-popup { right: 16px; }
+      #crime-legend .bar {
+        width: 110px; height: 8px; border-radius: 4px; margin: 6px 0 3px;
+        background: linear-gradient(90deg, rgba(255,220,90,0.15), #ffb347, #ff5c33, #d40f2c);
+      }
+      #crime-legend .lbl { display: flex; justify-content: space-between; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="brand" class="panel">
+      <h1>Tulsa Sim</h1>
+      <span>3D digital twin &middot; downtown core</span>
+    </div>
+
+    <div id="search-wrap" class="panel">
+      <input id="search" type="text" placeholder="Fly to… (Cain's Ballroom, Greenwood, address)" autocomplete="off" />
+      <div id="search-results"></div>
+    </div>
+
+    <div id="toolbar" class="panel">
+      <h2>Layers</h2>
+      <label class="toggle-row">
+        <input type="checkbox" id="tg-buildings" checked />
+        <span class="toggle-track"></span>
+        <span class="toggle-label">Buildings</span>
+      </label>
+      <label class="toggle-row">
+        <input type="checkbox" id="tg-streets" checked />
+        <span class="toggle-track"></span>
+        <span class="toggle-label">Street grid</span>
+      </label>
+      <label class="toggle-row warm">
+        <input type="checkbox" id="tg-crime" />
+        <span class="toggle-track"></span>
+        <span>
+          <span class="toggle-label">Crime heatmap</span>
+          <div class="toggle-sub" id="crime-sub">aggregated calls for service</div>
+        </span>
+      </label>
+      <select id="crime-filter">
+        <option value="">All categories</option>
+      </select>
+    </div>
+
+    <div id="popup" class="panel">
+      <div class="popup-head">
+        <h3>Parcel Intelligence</h3>
+        <button class="popup-close" id="popup-close" title="Close">×</button>
+      </div>
+      <div class="popup-body" id="popup-body"></div>
+    </div>
+
+    <div id="crime-legend" class="panel">
+      <div>CALLS / CELL (90d)</div>
+      <div class="bar"></div>
+      <div class="lbl"><span>low</span><span>high</span></div>
+    </div>
+
+    <div id="timeline" class="panel">
+      <div class="tl-top">
+        <span class="tl-title">Time Machine</span>
+        <span id="tl-year">2026</span>
+      </div>
+      <input id="tl-slider" type="range" min="1943" max="2026" step="1" value="2026" />
+      <div class="tl-marks">
+        <span data-year="1943">1943 aerial</span>
+        <span data-year="2026">2026 today</span>
+      </div>
+    </div>
+
+    <div id="status" class="panel"><span class="dot" id="status-dot"></span><span id="status-text">initializing…</span></div>
+
+    <div id="attribution" class="panel">
+      © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> · INCOG · City of Tulsa · OCC 1943
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
