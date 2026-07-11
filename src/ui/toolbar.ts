@@ -3,12 +3,19 @@ export interface ToolbarCallbacks {
   onStreets(on: boolean): void;
   onCrime(on: boolean): void;
   onCrimeFilter(category: string): void;
+  onBuses(on: boolean): void;
+  onCameras(on: boolean): void;
+  onNight(on: boolean): void;
 }
 
+/** Layer + display toggles now live inside the City Vitals panel. */
 export function initToolbar(cb: ToolbarCallbacks) {
   const buildings = document.getElementById('tg-buildings') as HTMLInputElement;
   const streets = document.getElementById('tg-streets') as HTMLInputElement;
   const crime = document.getElementById('tg-crime') as HTMLInputElement;
+  const buses = document.getElementById('tg-buses') as HTMLInputElement;
+  const cameras = document.getElementById('tg-cameras') as HTMLInputElement;
+  const night = document.getElementById('tg-night') as HTMLInputElement;
   const filter = document.getElementById('crime-filter') as HTMLSelectElement;
   const legend = document.getElementById('crime-legend')!;
 
@@ -20,6 +27,9 @@ export function initToolbar(cb: ToolbarCallbacks) {
     legend.classList.toggle('visible', crime.checked);
   });
   filter.addEventListener('change', () => cb.onCrimeFilter(filter.value));
+  buses.addEventListener('change', () => cb.onBuses(buses.checked));
+  cameras.addEventListener('change', () => cb.onCameras(cameras.checked));
+  night.addEventListener('change', () => cb.onNight(night.checked));
 }
 
 export function populateCrimeCategories(categories: string[]) {
@@ -39,4 +49,8 @@ export function setCrimeSubtitle(text: string) {
 export function setStatus(text: string, busy = false) {
   document.getElementById('status-text')!.textContent = text;
   document.getElementById('status-dot')!.classList.toggle('busy', busy);
+}
+
+export function setSubtitle(text: string) {
+  document.getElementById('brand-sub')!.textContent = text;
 }

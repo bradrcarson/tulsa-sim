@@ -1,4 +1,4 @@
-import { llToLocal, DOWNTOWN_BBOX } from '../geo/projection';
+import { llToLocal, EXPANDED_BBOX } from '../geo/projection';
 
 /**
  * Fly-to search: hardcoded downtown landmarks answer instantly; anything
@@ -15,6 +15,12 @@ const LANDMARKS: Array<{ name: string; lon: number; lat: number }> = [
   { name: 'Blue Dome District', lon: -95.9868, lat: 36.1553 },
   { name: 'Tulsa Arts District', lon: -95.9915, lat: 36.1600 },
   { name: 'ONEOK Field', lon: -95.9853, lat: 36.1600 },
+  // Phase 2 expanded coverage
+  { name: 'Expo Square', lon: -95.9319, lat: 36.1315 },
+  { name: 'Cherry Street', lon: -95.9690, lat: 36.1315 },
+  { name: 'Utica Square', lon: -95.9645, lat: 36.1258 },
+  { name: 'Kendall Whittier', lon: -95.9560, lat: 36.1560 },
+  { name: 'University of Tulsa', lon: -95.9446, lat: 36.1524 },
 ];
 
 export function initSearch(flyTo: (x: number, z: number) => void) {
@@ -66,7 +72,7 @@ export function initSearch(flyTo: (x: number, z: number) => void) {
 
     renderMatches([], 'geocoding…');
     try {
-      const [w, s, e, n] = DOWNTOWN_BBOX;
+      const [w, s, e, n] = EXPANDED_BBOX;
       const url =
         `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q + ', Tulsa, OK')}` +
         `&viewbox=${w},${n},${e},${s}`;

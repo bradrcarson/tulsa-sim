@@ -25,6 +25,7 @@ const CLASS_STYLE: Record<string, { color: number; y: number }> = {
 
 export class StreetsLayer {
   group = new THREE.Group();
+  private materials: THREE.LineBasicMaterial[] = [];
 
   constructor() {
     this.group.name = 'streets';
@@ -32,6 +33,14 @@ export class StreetsLayer {
 
   setVisible(v: boolean) {
     this.group.visible = v;
+  }
+
+  /** Night mode: intensify the glow; day mode: mute it so roads read as asphalt. */
+  setNightMode(on: boolean) {
+    for (const mat of this.materials) {
+      const base = mat.userData.baseOpacity as number;
+      mat.opacity = on ? base : base * 0.45;
+    }
   }
 
   async load(url = 'data/streets.json'): Promise<void> {
@@ -65,6 +74,8 @@ export class StreetsLayer {
         transparent: true,
         opacity: isMajor ? 0.95 : 0.55,
       });
+      mat.userData.baseOpacity = mat.opacity;
+      this.materials.push(mat);
       const lines = new THREE.LineSegments(geom, mat);
       lines.name = 'streets-' + cls;
       this.group.add(lines);

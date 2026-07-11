@@ -31,5 +31,8 @@ export function localToLL(x: number, z: number): [number, number] {
 /** Downtown coverage bbox (WGS84): [west, south, east, north]. */
 export const DOWNTOWN_BBOX: [number, number, number, number] = [-96.010, 36.135, -95.955, 36.175];
 
-/** Full Tulsa-metro bbox for future expansion (Phase 2+). */
+/** Phase 2 baked coverage: midtown + Cherry Street + Expo Square (see scripts/bake-data.mjs). */
+export const EXPANDED_BBOX: [number, number, number, number] = [-96.05, 36.10, -95.88, 36.20];
+
+/** Full Tulsa-metro bbox for future expansion (Phase 3+). */
 export const METRO_BBOX: [number, number, number, number] = [-96.15, 36.02, -95.75, 36.25];

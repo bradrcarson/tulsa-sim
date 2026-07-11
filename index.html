@@ -9,7 +9,7 @@
     <style>
       :root {
         --bg: #0a0e14;
-        --panel: rgba(13, 19, 28, 0.92);
+        --panel: rgba(11, 16, 24, 0.88);
         --border: rgba(90, 160, 220, 0.25);
         --text: #cfe3f5;
         --text-dim: #7a93ab;
@@ -86,19 +86,76 @@
       #search-results button:hover { background: rgba(70, 180, 255, 0.12); }
       #search-results .hint { padding: 8px 14px; font-size: 11px; color: var(--text-dim); }
 
-      /* ── Toolbar (layer toggles) ────────────────── */
-      #toolbar {
-        top: 80px; left: 16px;
-        padding: 12px 14px;
-        display: flex; flex-direction: column; gap: 10px;
-        z-index: 10;
-        min-width: 190px;
+      /* ── City Vitals dashboard (right side) ─────── */
+      #vitals {
+        top: 16px; right: 16px;
+        width: 268px;
+        z-index: 12;
+        padding: 0;
+        overflow: hidden;
+        max-height: calc(100vh - 120px);
+        display: flex; flex-direction: column;
       }
-      #toolbar h2 {
-        font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      /* animated glow border — CSS only, no shaders */
+      #vitals::before {
+        content: '';
+        position: absolute; inset: 0;
+        border-radius: 10px;
+        padding: 1px;
+        background: linear-gradient(120deg,
+          rgba(70, 180, 255, 0.55), rgba(70, 180, 255, 0.05) 30%,
+          rgba(255, 156, 70, 0.35) 55%, rgba(70, 180, 255, 0.05) 75%,
+          rgba(70, 180, 255, 0.55));
+        background-size: 300% 300%;
+        animation: glow-sweep 7s linear infinite;
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
+      }
+      @keyframes glow-sweep {
+        0% { background-position: 0% 50%; }
+        100% { background-position: 300% 50%; }
+      }
+      #vitals .vt-head {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 10px 14px;
+        background: rgba(70, 180, 255, 0.07);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      #vitals .vt-head h2 {
+        font-size: 10.5px; letter-spacing: 0.2em; text-transform: uppercase;
+        color: var(--accent); font-family: var(--mono); font-weight: 600;
+      }
+      #vitals-collapse {
+        background: none; border: none; color: var(--text-dim); cursor: pointer;
+        font-size: 13px; padding: 0 2px; line-height: 1;
+      }
+      #vitals-collapse:hover { color: var(--text); }
+      #vitals .vt-body { padding: 12px 14px 14px; overflow-y: auto; }
+      #vitals.collapsed .vt-body { display: none; }
+
+      .vt-clockrow { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+      #vt-clock { font-size: 26px; font-weight: 700; font-family: var(--mono); color: #fff; letter-spacing: 0.04em; }
+      #vt-date { font-size: 10px; font-family: var(--mono); color: var(--text-dim); }
+
+      .vt-wxrow { display: flex; align-items: baseline; gap: 10px; padding: 6px 0 10px; border-bottom: 1px solid rgba(90,160,220,0.12); }
+      #vt-wx-temp { font-size: 19px; font-weight: 600; font-family: var(--mono); color: var(--accent); }
+      #vt-wx-cond { font-size: 11.5px; color: var(--text); }
+      #vt-wx-wind { font-size: 10px; font-family: var(--mono); color: var(--text-dim); margin-left: auto; }
+
+      .vt-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; padding: 10px 0; border-bottom: 1px solid rgba(90,160,220,0.12); }
+      .vt-stat .k { font-size: 8.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); font-family: var(--mono); }
+      .vt-stat .v { font-size: 11px; font-family: var(--mono); color: var(--text); margin-top: 1px; }
+      .vt-stat .v.warn { color: var(--accent-warm); }
+
+      #vitals h3 {
+        font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
         color: var(--text-dim); font-family: var(--mono); font-weight: 600;
+        margin: 12px 0 8px;
       }
-      .toggle-row { display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
+      .toggle-row { display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; margin-bottom: 9px; }
       .toggle-row input { display: none; }
       .toggle-track {
         width: 30px; height: 16px; border-radius: 9px;
@@ -115,23 +172,24 @@
       .toggle-row input:checked + .toggle-track::after { left: 16px; background: var(--accent); }
       .toggle-row.warm input:checked + .toggle-track { background: rgba(255, 156, 70, 0.4); }
       .toggle-row.warm input:checked + .toggle-track::after { background: var(--accent-warm); }
-      .toggle-label { font-size: 12.5px; }
-      .toggle-sub { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
+      .toggle-label { font-size: 12px; }
+      .toggle-sub { font-size: 9.5px; color: var(--text-dim); margin-top: 1px; font-family: var(--mono); }
 
       #crime-filter {
         display: none;
         background: rgba(10, 16, 24, 0.8);
         border: 1px solid var(--border); border-radius: 6px;
-        color: var(--text); font-size: 11.5px; padding: 5px 8px;
+        color: var(--text); font-size: 11px; padding: 5px 8px;
         font-family: var(--mono); outline: none;
-        max-width: 100%;
+        max-width: 100%; width: 100%;
+        margin: -3px 0 9px;
       }
       #crime-filter.visible { display: block; }
 
-      /* ── Parcel popup ───────────────────────────── */
+      /* ── Parcel / camera popup (left of vitals) ─── */
       #popup {
         display: none;
-        top: 80px; right: 16px;
+        top: 80px; right: 300px;
         width: 300px;
         padding: 0;
         z-index: 20;
@@ -161,6 +219,15 @@
       #popup .v.money { color: #7fe0a7; }
       #popup .loading { color: var(--text-dim); font-size: 12px; padding: 10px 0; text-align: center; }
       #popup .addr { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #fff; }
+      #popup .cam-link {
+        display: block; margin-top: 10px; padding: 8px 10px;
+        background: rgba(255, 156, 70, 0.12);
+        border: 1px solid rgba(255, 156, 70, 0.4); border-radius: 6px;
+        color: var(--accent-warm); font-size: 12px; font-family: var(--mono);
+        text-decoration: none; text-align: center;
+      }
+      #popup .cam-link:hover { background: rgba(255, 156, 70, 0.22); }
+      #popup .cam-note { font-size: 9.5px; color: var(--text-dim); margin-top: 7px; line-height: 1.4; }
 
       /* ── Timeline ───────────────────────────────── */
       #timeline {
@@ -185,6 +252,7 @@
         background: #fff; border: 3px solid var(--accent); cursor: grab;
       }
       #timeline .tl-marks { display: flex; justify-content: space-between; margin-top: 5px; font-size: 10px; font-family: var(--mono); color: var(--text-dim); }
+      #timeline .tl-marks span { cursor: pointer; }
       #timeline .tl-marks span.active { color: var(--accent-warm); }
 
       /* ── Status / attribution ───────────────────── */
@@ -207,21 +275,38 @@
       }
       #attribution a { color: var(--text-dim); }
 
-      /* ── Legend for crime heat ──────────────────── */
+      /* ── Legend for crime heat (left, under brand) ─ */
       #crime-legend {
         display: none;
-        top: 80px; right: 330px;
+        top: 80px; left: 16px;
         padding: 10px 12px;
         z-index: 9;
         font-size: 10px; font-family: var(--mono); color: var(--text-dim);
       }
       #crime-legend.visible { display: block; }
-      #crime-legend.no-popup { right: 16px; }
       #crime-legend .bar {
         width: 110px; height: 8px; border-radius: 4px; margin: 6px 0 3px;
         background: linear-gradient(90deg, rgba(255,220,90,0.15), #ffb347, #ff5c33, #d40f2c);
       }
       #crime-legend .lbl { display: flex; justify-content: space-between; }
+
+      /* ── Intro hint ─────────────────────────────── */
+      #intro-hint {
+        top: 50%; left: 50%; transform: translate(-50%, -50%);
+        padding: 10px 22px;
+        font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+        font-family: var(--mono); color: var(--text-dim);
+        z-index: 30;
+        pointer-events: none;
+        opacity: 1; transition: opacity 0.6s;
+      }
+      #intro-hint.gone { opacity: 0; }
+
+      @media (max-width: 760px) {
+        #vitals { width: 230px; }
+        #vitals:not(.collapsed) .vt-body { max-height: 45vh; }
+        #popup { right: 16px; top: 72px; z-index: 25; }
+      }
     </style>
   </head>
   <body>
@@ -229,7 +314,7 @@
 
     <div id="brand" class="panel">
       <h1>Tulsa Sim</h1>
-      <span>3D digital twin &middot; downtown core</span>
+      <span id="brand-sub">3D digital twin &middot; Tulsa metro</span>
     </div>
 
     <div id="search-wrap" class="panel">
@@ -237,34 +322,85 @@
       <div id="search-results"></div>
     </div>
 
-    <div id="toolbar" class="panel">
-      <h2>Layers</h2>
-      <label class="toggle-row">
-        <input type="checkbox" id="tg-buildings" checked />
-        <span class="toggle-track"></span>
-        <span class="toggle-label">Buildings</span>
-      </label>
-      <label class="toggle-row">
-        <input type="checkbox" id="tg-streets" checked />
-        <span class="toggle-track"></span>
-        <span class="toggle-label">Street grid</span>
-      </label>
-      <label class="toggle-row warm">
-        <input type="checkbox" id="tg-crime" />
-        <span class="toggle-track"></span>
-        <span>
-          <span class="toggle-label">Crime heatmap</span>
-          <div class="toggle-sub" id="crime-sub">aggregated calls for service</div>
-        </span>
-      </label>
-      <select id="crime-filter">
-        <option value="">All categories</option>
-      </select>
+    <!-- ── City Vitals dashboard ─────────────────────────── -->
+    <div id="vitals" class="panel">
+      <div class="vt-head">
+        <h2>City Vitals</h2>
+        <button id="vitals-collapse" title="Collapse">▾</button>
+      </div>
+      <div class="vt-body">
+        <div class="vt-clockrow">
+          <span id="vt-clock">--:--:--</span>
+          <span id="vt-date">&nbsp;</span>
+        </div>
+        <div class="vt-wxrow">
+          <span id="vt-wx-temp">—</span>
+          <span id="vt-wx-cond">loading weather…</span>
+          <span id="vt-wx-wind"></span>
+        </div>
+        <div class="vt-stats">
+          <div class="vt-stat"><div class="k">Population</div><div class="v">Tulsa metro ~1M</div></div>
+          <div class="vt-stat"><div class="k">Active layers</div><div class="v" id="vt-layers">0 layers live</div></div>
+          <div class="vt-stat"><div class="k">Transit</div><div class="v" id="vt-transit">buses off</div></div>
+          <div class="vt-stat"><div class="k">Crime 90d</div><div class="v" id="vt-crime">loading…</div></div>
+          <div class="vt-stat"><div class="k">Cameras</div><div class="v" id="vt-cameras">loading…</div></div>
+          <div class="vt-stat"><div class="k">Coverage</div><div class="v" id="vt-coverage">downtown</div></div>
+        </div>
+
+        <h3>Display</h3>
+        <label class="toggle-row warm">
+          <input type="checkbox" id="tg-night" checked />
+          <span class="toggle-track"></span>
+          <span>
+            <span class="toggle-label">Night mode</span>
+            <div class="toggle-sub">cinematic lighting + lit windows</div>
+          </span>
+        </label>
+
+        <h3>Layers</h3>
+        <label class="toggle-row">
+          <input type="checkbox" id="tg-buildings" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label">Buildings</span>
+        </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="tg-streets" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label">Street grid</span>
+        </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="tg-buses" />
+          <span class="toggle-track"></span>
+          <span>
+            <span class="toggle-label">Live buses</span>
+            <div class="toggle-sub" id="buses-sub">Tulsa Transit GTFS-RT</div>
+          </span>
+        </label>
+        <label class="toggle-row warm">
+          <input type="checkbox" id="tg-cameras" />
+          <span class="toggle-track"></span>
+          <span>
+            <span class="toggle-label">Traffic cameras</span>
+            <div class="toggle-sub" id="cameras-sub">ODOT / OKtraffic</div>
+          </span>
+        </label>
+        <label class="toggle-row warm">
+          <input type="checkbox" id="tg-crime" />
+          <span class="toggle-track"></span>
+          <span>
+            <span class="toggle-label">Crime heatmap</span>
+            <div class="toggle-sub" id="crime-sub">aggregated calls for service</div>
+          </span>
+        </label>
+        <select id="crime-filter">
+          <option value="">All categories</option>
+        </select>
+      </div>
     </div>
 
     <div id="popup" class="panel">
       <div class="popup-head">
-        <h3>Parcel Intelligence</h3>
+        <h3 id="popup-title">Parcel Intelligence</h3>
         <button class="popup-close" id="popup-close" title="Close">×</button>
       </div>
       <div class="popup-body" id="popup-body"></div>
@@ -291,8 +427,10 @@
     <div id="status" class="panel"><span class="dot" id="status-dot"></span><span id="status-text">initializing…</span></div>
 
     <div id="attribution" class="panel">
-      © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> · INCOG · City of Tulsa · OCC 1943
+      © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> · INCOG · City of Tulsa · OCC 1943 · Tulsa Transit · ODOT
     </div>
+
+    <div id="intro-hint" class="panel">click to skip intro</div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
