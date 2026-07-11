@@ -8,7 +8,9 @@ Interactive 3D digital twin of Tulsa, Oklahoma. Inspired by [nycsim.com](https:/
 
 ## Cursor Cloud specific instructions
 
-- This is a greenfield project. Scaffold everything from scratch.
+- This is a greenfield project. A minimal Vite + TypeScript + Three.js "hello world" scaffold now exists (`index.html`, `src/main.ts`, `tsconfig.json`) that renders a placeholder 3D scene — Phase 1 work should build the real Tulsa layers on top of / replacing `src/main.ts`.
+- Dev server: `npm run dev` (Vite) serves on `http://localhost:5173/`. Build: `npm run build` runs `tsc` (typecheck, `noEmit`) then `vite build`. There is no separate lint script; the `tsc` step in the build is the type/lint gate.
+- `@types/three` is required for `tsc` to pass and is already in `devDependencies`; `npm install` restores it.
 - Run `npm install` (or equivalent) and verify the dev server starts before marking Phase 1 complete.
 - All Tulsa data sources below are **public** — no API keys required for Phase 1.
 - Network access to ArcGIS REST endpoints, Overpass API, and GitHub raw URLs is required.
