@@ -41,8 +41,10 @@ const PAL = {
   industrial: [new THREE.Color(0x6e7276), new THREE.Color(0x63676c)],
   unknown: [new THREE.Color(0x736f6b), new THREE.Color(0x7b7672)],
 };
-const COLOR_MID = new THREE.Color(0x3d5a80);
-const COLOR_HIGH = new THREE.Color(0x66c7ff);
+// tower ramp: steel-blue curtain wall (desaturated so day mode reads as
+// glass/limestone rather than placeholder blue; night keeps the cool cast)
+const COLOR_MID = new THREE.Color(0x4a5a6e);
+const COLOR_HIGH = new THREE.Color(0x8fb6cf);
 
 function hash01(x: number, y: number): number {
   const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;

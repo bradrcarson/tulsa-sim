@@ -9,6 +9,7 @@ import { HistoryLayer } from './layers/history';
 import { TransitLayer } from './layers/transit';
 import { CamerasLayer } from './layers/cameras';
 import { PhotorealLayer, getStoredKey, storeKey } from './layers/photoreal';
+import { TreesLayer } from './layers/trees';
 import { localToLL, llToLocal } from './geo/projection';
 import { loadTerrain, terrainReady, elevation } from './geo/terrain';
 import { loadImagery } from './data/imagery';
@@ -38,9 +39,11 @@ const parcels = new ParcelsLayer(city.scene);
 const history = new HistoryLayer(terrain);
 const transit = new TransitLayer();
 const cameras = new CamerasLayer();
+const trees = new TreesLayer();
 const photoreal = new PhotorealLayer(city.camera, city.renderer, (msg) => setStatus(msg));
 
 city.scene.add(terrain.group);
+city.scene.add(trees.group);
 city.scene.add(buildings.group);
 city.scene.add(streets.group);
 city.scene.add(crime.group);
@@ -89,6 +92,7 @@ function applyNight(on: boolean) {
   buildings.setNightMode(on);
   streets.setNightMode(on);
   terrain.setNightMode(on);
+  trees.setNightMode(on);
 }
 
 // ── photoreal mode (optional Google Maps Platform key) ───────
@@ -111,11 +115,13 @@ function setPhotoreal(on: boolean) {
     // overlays (buses, cameras, crime, parcel picking) stay on top
     buildings.setVisible(false);
     terrain.group.visible = false;
+    trees.group.visible = false;
     document.getElementById('photoreal-sub')!.textContent = 'streaming · Google';
   } else {
     photoreal.disable();
     buildings.setVisible(layerState.get('buildings') ?? true);
     terrain.group.visible = true;
+    trees.group.visible = currentYear !== 1943;
     document.getElementById('photoreal-sub')!.textContent = 'needs Google Maps key';
   }
 }
@@ -160,6 +166,7 @@ initTimeline(async (year) => {
   currentYear = year;
   const buildingOpacity = await history.setYear(year);
   buildings.setOpacity(buildingOpacity);
+  trees.group.visible = buildingOpacity > 0.9; // no modern canopy over the 1943 photo
 });
 
 // ── Click → camera pick or parcel spatial join ───────────────
@@ -230,6 +237,11 @@ async function boot() {
   await loadTerrain().catch((e) => console.error('[terrain]', e));
   await loadImagery().catch((e) => console.error('[imagery]', e));
   await terrain.load().catch((e) => console.error('[terrain]', e));
+  try {
+    trees.build();
+  } catch (e) {
+    console.error('[trees]', e);
+  }
   applyNight(true);
 
   setStatus('streaming metro tiles…', true);
