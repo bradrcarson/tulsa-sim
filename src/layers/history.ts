@@ -107,7 +107,7 @@ export class HistoryLayer {
       this.aerialPlane.visible = false;
     }
 
-    // modern buildings: ghosts at 1943 (0.12), solid today
-    return 0.12 + 0.88 * t;
+    // modern buildings: ghosts at 1943, solid today
+    return 0.22 + 0.78 * t;
   }
 }

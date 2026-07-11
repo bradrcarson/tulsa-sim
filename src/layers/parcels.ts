@@ -81,7 +81,14 @@ export class ParcelsLayer {
 
     const res = await fetchWithRetry(`${PARCEL_SERVICE}?${params}`);
     const data = await res.json();
-    const feat = data?.features?.[0];
+    // Overlapping ROW/utility slivers often carry no assessor attributes;
+    // prefer the first feature that actually has an owner or valuation.
+    const feats: Array<{
+      attributes?: Record<string, unknown>;
+      geometry?: { rings?: [number, number][][] };
+    }> = data?.features ?? [];
+    const feat =
+      feats.find((f) => f.attributes?.['Owner'] || f.attributes?.['TotalAcctValue']) ?? feats[0];
     if (!feat) {
       this.cache.set(key, null);
       return null;

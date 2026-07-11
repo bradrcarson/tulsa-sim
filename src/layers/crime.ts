@@ -156,7 +156,7 @@ export class CrimeLayer {
       g.translate((cx + 0.5) * CELL_METERS, 2.2 + t * 2, (cz + 0.5) * CELL_METERS);
       const n = g.getAttribute('position').count;
       const colors = new Float32Array(n * 4);
-      const alpha = 0.28 + t * 0.5;
+      const alpha = 0.16 + t * 0.65; // additive: sparse cells glow faintly, hotspots burn
       for (let i = 0; i < n; i++) {
         colors[i * 4] = col.r;
         colors[i * 4 + 1] = col.g;
@@ -174,6 +174,7 @@ export class CrimeLayer {
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
     });
     this.mesh = new THREE.Mesh(merged, mat);
     this.mesh.name = 'crime-heat-surface';

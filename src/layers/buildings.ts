@@ -111,6 +111,9 @@ export class BuildingsLayer {
     for (const g of geoms) {
       const mesh = new THREE.Mesh(g, this.material);
       mesh.name = 'building-batch';
+      // draw after the historical aerial plane (renderOrder 1) so faded
+      // buildings blend over the photo instead of depth-occluding it
+      mesh.renderOrder = 2;
       this.group.add(mesh);
     }
   }
