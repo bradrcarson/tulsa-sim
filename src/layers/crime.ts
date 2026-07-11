@@ -159,7 +159,7 @@ export class CrimeLayer {
       g.translate(wx, elevation(wx, wz) + 3.5 + t * 2, wz);
       const n = g.getAttribute('position').count;
       const colors = new Float32Array(n * 4);
-      const alpha = 0.16 + t * 0.65; // additive: sparse cells glow faintly, hotspots burn
+      const alpha = 0.28 + t * 0.62; // additive: sparse cells glow faintly, hotspots burn
       for (let i = 0; i < n; i++) {
         colors[i * 4] = col.r;
         colors[i * 4 + 1] = col.g;

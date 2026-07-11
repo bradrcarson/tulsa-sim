@@ -172,9 +172,10 @@ await page.waitForFunction(
 );
 await page.click('#popup-close');
 await page.click('label:has(#tg-crime)');
-// zoom out so the block-level aggregation pattern is visible
+// zoom out so the block-level aggregation pattern is visible (not so far
+// that 160 m cells go subpixel against the metro glow)
 await page.mouse.move(800, 450);
-for (let i = 0; i < 6; i++) {
+for (let i = 0; i < 4; i++) {
   await page.mouse.wheel(0, 600);
   await page.waitForTimeout(150);
 }
