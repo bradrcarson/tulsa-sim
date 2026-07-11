@@ -60,9 +60,9 @@ export function createFacadeMaterial(): THREE.MeshLambertMaterial {
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-        // day mode: pull the stylized night palette toward concrete/limestone
+        // day mode: soften toward limestone but keep the imagery-sampled hue
         float lum = dot(diffuseColor.rgb, vec3(0.333));
-        vec3 dayAlbedo = mix(vec3(lum) * vec3(1.02, 0.99, 0.94), diffuseColor.rgb, 0.35) * 1.25;
+        vec3 dayAlbedo = mix(vec3(lum) * vec3(1.02, 0.99, 0.94), diffuseColor.rgb, 0.55) * 1.18;
         diffuseColor.rgb = mix(dayAlbedo, diffuseColor.rgb, uNight);
         float winMask = 0.0;
         vec3 winGlow = vec3(0.0);

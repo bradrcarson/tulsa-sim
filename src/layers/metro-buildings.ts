@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { fetchWithRetry } from '../data/cache';
 import { elevation } from '../geo/terrain';
 import { createFacadeMaterial, setFacadeNight } from '../materials/facade';
+import { tierForBbox, tierUV, sampleColor, type ImageryTier } from '../data/imagery';
 
 /**
  * Tile-streamed metro buildings (Phase 3).
@@ -18,7 +19,7 @@ import { createFacadeMaterial, setFacadeNight } from '../materials/facade';
  * Tiles rebuild asynchronously as the camera moves; far tiles are disposed.
  */
 const TILE = 2000;
-const LOD_DIST: [number, number, number] = [2600, 7000, 19000];
+const LOD_DIST: [number, number, number] = [3200, 8000, 19000];
 const LOD_MIN_AREA: [number, number, number] = [0, 90, 380];
 
 interface TileRec {
@@ -30,7 +31,7 @@ interface TileRec {
 
 interface BuiltTile {
   lod: number;
-  mesh: THREE.Mesh | null;
+  meshes: THREE.Mesh[];
 }
 
 // land-use palettes (base wall albedo; roofs derived darker)
@@ -58,8 +59,9 @@ function wallColor(h: number, lu: number, rand: number): THREE.Color {
   else if (lu === 3) base = pick(PAL.industrial);
   else base = pick(PAL.unknown);
   base = base.clone().multiplyScalar(0.9 + rand * 0.25);
-  // mid-rise blends toward the tower ramp
-  if (h > 14) base.lerp(COLOR_MID, Math.min(1, (h - 14) / 21) * 0.7);
+  // mid-rise blends toward the tower ramp (kept mild so the imagery-sampled
+  // tint still differentiates brick from concrete from glass)
+  if (h > 14) base.lerp(COLOR_MID, Math.min(1, (h - 14) / 21) * 0.45);
   return base;
 }
 
@@ -69,6 +71,8 @@ export class MetroBuildingsLayer {
   loadedTiles = 0;
   private facadeMat: THREE.MeshLambertMaterial;
   private plainMat: THREE.MeshLambertMaterial;
+  private roofMats = new Map<string, THREE.MeshLambertMaterial>();
+  private night = true;
   private tileIndex = new Map<string, number>();
   private tileCache = new Map<string, TileRec[] | Promise<TileRec[]>>();
   private built = new Map<string, BuiltTile>();
@@ -88,10 +92,28 @@ export class MetroBuildingsLayer {
   setOpacity(o: number) {
     this.facadeMat.opacity = o;
     this.plainMat.opacity = o;
+    for (const m of this.roofMats.values()) m.opacity = o;
   }
 
   setNightMode(on: boolean) {
+    this.night = on;
     setFacadeNight(this.facadeMat, on);
+    for (const m of this.roofMats.values()) this.tintRoof(m);
+  }
+
+  /** Orthophoto roofs share the terrain's night tint so the photo reads as one city. */
+  private tintRoof(mat: THREE.MeshLambertMaterial) {
+    mat.color.set(this.night ? 0x55668a : 0xffffff);
+  }
+
+  private roofMatFor(tier: ImageryTier): THREE.MeshLambertMaterial {
+    let mat = this.roofMats.get(tier.name);
+    if (!mat) {
+      mat = new THREE.MeshLambertMaterial({ map: tier.tex, transparent: true });
+      this.tintRoof(mat);
+      this.roofMats.set(tier.name, mat);
+    }
+    return mat;
   }
 
   async load(): Promise<void> {
@@ -142,9 +164,9 @@ export class MetroBuildingsLayer {
     for (const [key, built] of this.built) {
       const want = wanted.get(key);
       if (want === undefined || want !== built.lod) {
-        if (built.mesh) {
-          this.group.remove(built.mesh);
-          built.mesh.geometry.dispose();
+        for (const mesh of built.meshes) {
+          this.group.remove(mesh);
+          mesh.geometry.dispose();
         }
         this.built.delete(key);
       }
@@ -157,9 +179,9 @@ export class MetroBuildingsLayer {
     for (const [key, lod] of queue) {
       const recs = await this.fetchTile(key);
       if (this.built.has(key)) continue; // raced
-      const mesh = this.buildTileMesh(key, recs, lod);
-      this.built.set(key, { lod, mesh });
-      if (mesh) this.group.add(mesh);
+      const meshes = this.buildTileMesh(key, recs, lod);
+      this.built.set(key, { lod, meshes });
+      for (const mesh of meshes) this.group.add(mesh);
       await new Promise((r) => setTimeout(r, 0)); // let frames through
     }
     this.loadedTiles = this.built.size;
@@ -184,8 +206,8 @@ export class MetroBuildingsLayer {
     return promise;
   }
 
-  /** Build one merged mesh for a tile at the given LOD. */
-  private buildTileMesh(key: string, recs: TileRec[], lod: number): THREE.Mesh | null {
+  /** Build merged meshes for a tile at the given LOD (walls + orthophoto roofs). */
+  private buildTileMesh(key: string, recs: TileRec[], lod: number): THREE.Mesh[] {
     const minArea = LOD_MIN_AREA[lod];
     const facades = lod === 0;
     const pos: number[] = [];
@@ -196,6 +218,10 @@ export class MetroBuildingsLayer {
     const rand: number[] = [];
     const idx: number[] = [];
 
+    // orthophoto roof buffers, grouped by imagery tier (chosen per building
+    // so downtown roofs use the sharpest sheet available)
+    const roofBufs = new Map<ImageryTier, { pos: number[]; uv: number[]; idx: number[] }>();
+
     for (const rec of recs) {
       if (rec.area < minArea) continue;
       const seed = hash01(rec.ring[0], rec.ring[1]);
@@ -205,6 +231,17 @@ export class MetroBuildingsLayer {
       const base = elevation(cx, cz) - 1.5; // sink foundations into slopes
       const top = base + 1.5 + rec.h;
       const color = wallColor(rec.h, rec.lu, seed);
+      // pull the wall albedo toward the photographed roof color: brick reads
+      // brick, white stone reads white (towers keep more of the stylized ramp)
+      if (lod <= 1) {
+        const photo = sampleColor(cx, cz);
+        if (photo) {
+          const hsl = { h: 0, s: 0, l: 0 };
+          photo.getHSL(hsl);
+          photo.setHSL(hsl.h, Math.min(hsl.s * 1.15, 0.6), Math.min(Math.max(hsl.l, 0.3), 0.62));
+          color.lerp(photo, rec.h > 35 ? 0.35 : 0.55);
+        }
+      }
       const roofColor = color.clone().multiplyScalar(rec.h > 35 ? 0.72 : 0.62);
       const hipRoof = facades && rec.lu === 1 && rec.area < 280 && rec.h < 10 && n <= 8;
 
@@ -274,34 +311,78 @@ export class MetroBuildingsLayer {
         } catch {
           tris = [];
         }
-        const v0 = pos.length / 3;
+        let bMinX = Infinity, bMinZ = Infinity, bMaxX = -Infinity, bMaxZ = -Infinity;
         for (let i = 0; i < n; i++) {
-          pos.push(rec.ring[i * 2], top, rec.ring[i * 2 + 1]);
-          nrm.push(0, 1, 0);
-          col.push(roofColor.r, roofColor.g, roofColor.b);
-          wallDist.push(-1);
-          floorY.push(base);
-          rand.push(seed);
+          const x = rec.ring[i * 2];
+          const z = rec.ring[i * 2 + 1];
+          if (x < bMinX) bMinX = x;
+          if (x > bMaxX) bMaxX = x;
+          if (z < bMinZ) bMinZ = z;
+          if (z > bMaxZ) bMaxZ = z;
         }
-        for (const [a, b, c] of tris) idx.push(v0 + a, v0 + b, v0 + c);
+        const tier = tierForBbox(bMinX, bMinZ, bMaxX, bMaxZ);
+        if (tier) {
+          // orthophoto roof: the actual Tulsa rooftop from NAIP
+          let buf = roofBufs.get(tier);
+          if (!buf) {
+            buf = { pos: [], uv: [], idx: [] };
+            roofBufs.set(tier, buf);
+          }
+          const v0 = buf.pos.length / 3;
+          for (let i = 0; i < n; i++) {
+            const x = rec.ring[i * 2];
+            const z = rec.ring[i * 2 + 1];
+            buf.pos.push(x, top, z);
+            const [u, v] = tierUV(tier, x, z);
+            buf.uv.push(u, v);
+          }
+          for (const [a, b, c] of tris) buf.idx.push(v0 + a, v0 + b, v0 + c);
+        } else {
+          const v0 = pos.length / 3;
+          for (let i = 0; i < n; i++) {
+            pos.push(rec.ring[i * 2], top, rec.ring[i * 2 + 1]);
+            nrm.push(0, 1, 0);
+            col.push(roofColor.r, roofColor.g, roofColor.b);
+            wallDist.push(-1);
+            floorY.push(base);
+            rand.push(seed);
+          }
+          for (const [a, b, c] of tris) idx.push(v0 + a, v0 + b, v0 + c);
+        }
       }
     }
 
-    if (!pos.length) return null;
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geom.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
-    geom.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    if (facades) {
-      geom.setAttribute('aWallDist', new THREE.Float32BufferAttribute(wallDist, 1));
-      geom.setAttribute('aFloorY', new THREE.Float32BufferAttribute(floorY, 1));
-      geom.setAttribute('aRand', new THREE.Float32BufferAttribute(rand, 1));
+    const meshes: THREE.Mesh[] = [];
+    if (pos.length) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geom.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+      geom.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      if (facades) {
+        geom.setAttribute('aWallDist', new THREE.Float32BufferAttribute(wallDist, 1));
+        geom.setAttribute('aFloorY', new THREE.Float32BufferAttribute(floorY, 1));
+        geom.setAttribute('aRand', new THREE.Float32BufferAttribute(rand, 1));
+      }
+      geom.setIndex(idx);
+      const mesh = new THREE.Mesh(geom, facades ? this.facadeMat : this.plainMat);
+      mesh.name = `btile-${key}-lod${lod}`;
+      mesh.renderOrder = 2;
+      meshes.push(mesh);
     }
-    geom.setIndex(idx);
-    const mesh = new THREE.Mesh(geom, facades ? this.facadeMat : this.plainMat);
-    mesh.name = `btile-${key}-lod${lod}`;
-    mesh.renderOrder = 2;
-    return mesh;
+    for (const [tier, buf] of roofBufs) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(buf.pos, 3));
+      geom.setAttribute('uv', new THREE.Float32BufferAttribute(buf.uv, 2));
+      const nrmArr = new Float32Array(buf.pos.length);
+      for (let i = 0; i < nrmArr.length; i += 3) nrmArr[i + 1] = 1;
+      geom.setAttribute('normal', new THREE.BufferAttribute(nrmArr, 3));
+      geom.setIndex(buf.idx);
+      const mesh = new THREE.Mesh(geom, this.roofMatFor(tier));
+      mesh.name = `btile-${key}-roofs-${tier.name}`;
+      mesh.renderOrder = 2;
+      meshes.push(mesh);
+    }
+    return meshes;
   }
 }
 

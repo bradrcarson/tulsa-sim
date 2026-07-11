@@ -11,6 +11,7 @@ import { CamerasLayer } from './layers/cameras';
 import { PhotorealLayer, getStoredKey, storeKey } from './layers/photoreal';
 import { localToLL, llToLocal } from './geo/projection';
 import { loadTerrain, terrainReady, elevation } from './geo/terrain';
+import { loadImagery } from './data/imagery';
 import {
   initPopup,
   showLoading,
@@ -225,8 +226,9 @@ document.getElementById('popup-close')!.addEventListener('click', () => {
 
 // ── Data loading ─────────────────────────────────────────────
 async function boot() {
-  setStatus('loading terrain…', true);
+  setStatus('loading terrain + aerial imagery…', true);
   await loadTerrain().catch((e) => console.error('[terrain]', e));
+  await loadImagery().catch((e) => console.error('[imagery]', e));
   await terrain.load().catch((e) => console.error('[terrain]', e));
   applyNight(true);
 

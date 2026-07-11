@@ -108,10 +108,27 @@ export function createScene(container: HTMLElement): CityScene {
   let night = true;
   let bloomEnabled = true;
 
+  // vertical gradient backdrops (screen-space) — a flat color sky reads toy-like
+  function gradientBg(stops: Array<[number, string]>): THREE.CanvasTexture {
+    const cv = document.createElement('canvas');
+    cv.width = 2;
+    cv.height = 512;
+    const ctx = cv.getContext('2d')!;
+    const g = ctx.createLinearGradient(0, 0, 0, 512);
+    for (const [at, color] of stops) g.addColorStop(at, color);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 2, 512);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+  const nightSky = gradientBg([[0, '#01020a'], [0.55, '#070d1c'], [1, '#131f36']]);
+  const daySky = gradientBg([[0, '#5f9bd8'], [0.55, '#a9cbe8'], [1, '#e2ecf2']]);
+
   function setNightMode(on: boolean) {
     night = on;
     const m = on ? MODES.night : MODES.day;
-    scene.background = new THREE.Color(m.bg);
+    scene.background = on ? nightSky : daySky;
     scene.fog = new THREE.FogExp2(m.fogColor, m.fogDensity);
     hemi.color.set(m.hemiSky);
     hemi.groundColor.set(m.hemiGround);
