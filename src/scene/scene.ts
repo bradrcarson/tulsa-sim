@@ -23,7 +23,7 @@ const MODES = {
   night: {
     bg: 0x05070d,
     fogColor: 0x0a0f1c,
-    fogDensity: 0.00012,
+    fogDensity: 0.000055,
     hemiSky: 0x2a3d5c,
     hemiGround: 0x0a0c12,
     hemiIntensity: 0.55,
@@ -36,7 +36,7 @@ const MODES = {
   day: {
     bg: 0xa9cbe8,
     fogColor: 0xb4d2ea,
-    fogDensity: 0.00007,
+    fogDensity: 0.00004,
     hemiSky: 0xdfeeff,
     hemiGround: 0x8b949e,
     hemiIntensity: 1.25,
@@ -55,7 +55,7 @@ export function createScene(container: HTMLElement): CityScene {
     55,
     window.innerWidth / window.innerHeight,
     1,
-    30000,
+    80000,
   );
   camera.position.set(600, 700, 900);
 
@@ -69,7 +69,7 @@ export function createScene(container: HTMLElement): CityScene {
   controls.dampingFactor = 0.08;
   controls.maxPolarAngle = Math.PI / 2 - 0.02; // stay above the ground
   controls.minDistance = 60;
-  controls.maxDistance = 12000;
+  controls.maxDistance = 28000;
   controls.target.set(0, 0, 0);
 
   // ── lights (retuned per mode) ──────────────────────────────
@@ -82,12 +82,14 @@ export function createScene(container: HTMLElement): CityScene {
   fill.position.set(900, 400, -1100);
   scene.add(fill);
 
-  // ── ground ─────────────────────────────────────────────────
-  const groundGeo = new THREE.PlaneGeometry(30000, 30000);
+  // ── ground fallback plane ──────────────────────────────────
+  // Sits below the terrain layer; catches rays/fills horizon beyond the
+  // heightfield extent. y=-45 keeps it under the Arkansas River valley.
+  const groundGeo = new THREE.PlaneGeometry(90000, 90000);
   const groundMat = new THREE.MeshLambertMaterial();
   const groundPlane = new THREE.Mesh(groundGeo, groundMat);
   groundPlane.rotation.x = -Math.PI / 2;
-  groundPlane.position.y = -0.5;
+  groundPlane.position.y = -45;
   groundPlane.name = 'ground';
   scene.add(groundPlane);
 
@@ -189,8 +191,8 @@ export function createScene(container: HTMLElement): CityScene {
   // ── intro fly-through: high orbit swooping down to downtown ─
   // Cubic-bezier-ish path over ~3.2 s; any pointer/key input skips it.
   function playIntro(onDone?: () => void) {
-    const startCam = new THREE.Vector3(-3800, 4200, 5200);
-    const midCam = new THREE.Vector3(-1200, 1800, 2600);
+    const startCam = new THREE.Vector3(-7500, 7800, 10500);
+    const midCam = new THREE.Vector3(-1800, 2400, 3400);
     const endCam = new THREE.Vector3(620, 640, 880);
     const startTarget = new THREE.Vector3(400, 0, -600);
     const endTarget = new THREE.Vector3(0, 60, 0);

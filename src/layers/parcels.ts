@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { llToLocal } from '../geo/projection';
+import { elevation } from '../geo/terrain';
 import { MemoryCache, fetchWithRetry } from '../data/cache';
 
 const PARCEL_SERVICE =
@@ -56,7 +57,7 @@ export class ParcelsLayer {
     for (const ring of rings) {
       const pts = ring.map(([lon, lat]) => {
         const [x, z] = llToLocal(lon, lat);
-        return new THREE.Vector3(x, 2.0, z);
+        return new THREE.Vector3(x, elevation(x, z) + 2.0, z);
       });
       const geom = new THREE.BufferGeometry().setFromPoints(pts);
       this.highlight.add(new THREE.LineLoop(geom, mat));

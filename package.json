@@ -10,11 +10,13 @@
   },
   "devDependencies": {
     "@types/three": "^0.185.1",
+    "geotiff": "^3.0.5",
     "playwright-core": "^1.61.1",
     "typescript": "^5.9.3",
     "vite": "^6.4.3"
   },
   "dependencies": {
+    "3d-tiles-renderer": "^0.4.28",
     "three": "^0.185.1"
   }
 }

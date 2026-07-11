@@ -1,13 +1,13 @@
 /**
- * Bake static data files into public/data/ for the expanded Phase 2 coverage.
+ * Bake live-feed helper data into public/data/.
  *
- *   node scripts/bake-data.mjs buildings   # Overpass buildings+streets → buildings.json / streets.json
  *   node scripts/bake-data.mjs transit     # GTFS static routes.txt → transit-routes.json
  *   node scripts/bake-data.mjs cameras     # OKtraffic camera snapshot → cameras.json
  *   node scripts/bake-data.mjs all
  *
- * Raw Overpass responses are NOT committed — geometries are simplified
- * (Douglas–Peucker) and quantized before writing (see AGENTS.md Phase 2 §5).
+ * NOTE (Phase 3): buildings/streets/terrain moved to scripts/bake-metro.mjs
+ * (Microsoft ML footprints + USGS 3DEP, binary tiles). The `buildings` and
+ * `streets` modes here are retired.
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -111,50 +111,6 @@ const OVERPASS_HEADERS = {
 };
 
 // ── buildings + streets from Overpass ────────────────────────
-async function bakeBuildings() {
-  const [s, w, n, e] = BBOX;
-  const query = `[out:json][timeout:300];(way["building"](${s},${w},${n},${e}););out geom;`;
-  console.log('Overpass: fetching buildings for bbox', BBOX, '…');
-  const res = await fetchRetry('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    headers: OVERPASS_HEADERS,
-    body: 'data=' + encodeURIComponent(query),
-  });
-  const data = await res.json();
-  console.log('  raw ways:', data.elements.length);
-
-  const out = [];
-  let dropped = 0;
-  for (const el of data.elements) {
-    if (!el.geometry || el.geometry.length < 4) continue;
-    let ring = el.geometry.map((g) => [g.lon, g.lat]);
-    // ensure closed
-    const first = ring[0];
-    const last = ring[ring.length - 1];
-    if (first[0] !== last[0] || first[1] !== last[1]) ring.push([...first]);
-
-    const far = distFromOrigin(ring[0][0], ring[0][1]) > 2000;
-    const area = ringAreaM2(ring);
-    // LOD: beyond 2 km drop sheds/garages and simplify harder
-    if (area < (far ? 55 : 15)) {
-      dropped++;
-      continue;
-    }
-    ring = simplify(ring, far ? 2.5 : 1.2);
-    if (ring.length < 4) {
-      dropped++;
-      continue;
-    }
-    const rec = { c: ring.map(([lon, lat]) => [q5(lon), q5(lat)]) };
-    const h = parseHeight(el.tags ?? {});
-    if (h !== undefined) rec.h = h;
-    if (el.tags?.name && !far) rec.n = el.tags.name;
-    out.push(rec);
-  }
-  const path = resolve(OUT, 'buildings.json');
-  writeFileSync(path, JSON.stringify(out));
-  console.log(`  wrote ${out.length} buildings (${dropped} dropped) → ${path}`);
-}
 
 const HIGHWAY_KEEP = new Set([
   'motorway', 'motorway_link', 'trunk', 'trunk_link', 'primary', 'primary_link',
@@ -162,31 +118,6 @@ const HIGHWAY_KEEP = new Set([
   'unclassified', 'service',
 ]);
 
-async function bakeStreets() {
-  const [s, w, n, e] = BBOX;
-  const query = `[out:json][timeout:300];(way["highway"](${s},${w},${n},${e}););out geom;`;
-  console.log('Overpass: fetching streets…');
-  const res = await fetchRetry('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    headers: OVERPASS_HEADERS,
-    body: 'data=' + encodeURIComponent(query),
-  });
-  const data = await res.json();
-  console.log('  raw ways:', data.elements.length);
-
-  const out = [];
-  for (const el of data.elements) {
-    const t = el.tags?.highway;
-    if (!t || !HIGHWAY_KEEP.has(t) || !el.geometry || el.geometry.length < 2) continue;
-    let line = el.geometry.map((g) => [g.lon, g.lat]);
-    line = simplify(line, 1.5);
-    if (line.length < 2) continue;
-    out.push({ c: line.map(([lon, lat]) => [q5(lon), q5(lat)]), t: t.replace('tertiary_link', 'tertiary') });
-  }
-  const path = resolve(OUT, 'streets.json');
-  writeFileSync(path, JSON.stringify(out));
-  console.log(`  wrote ${out.length} street segments → ${path}`);
-}
 
 // ── GTFS static: route id → short name / long name / color ──
 async function bakeTransit() {
@@ -283,8 +214,6 @@ async function bakeCameras() {
 
 // ── main ─────────────────────────────────────────────────────
 const mode = process.argv[2] ?? 'all';
-if (mode === 'buildings' || mode === 'all') await bakeBuildings();
-if (mode === 'buildings' || mode === 'streets' || mode === 'all') await bakeStreets();
 if (mode === 'transit' || mode === 'all') await bakeTransit();
 if (mode === 'cameras' || mode === 'all') await bakeCameras();
 console.log('done.');

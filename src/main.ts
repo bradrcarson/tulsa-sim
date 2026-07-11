@@ -1,13 +1,16 @@
 import * as THREE from 'three';
 import { createScene } from './scene/scene';
-import { BuildingsLayer } from './layers/buildings';
-import { StreetsLayer } from './layers/streets';
+import { MetroBuildingsLayer } from './layers/metro-buildings';
+import { MetroStreetsLayer } from './layers/metro-streets';
+import { TerrainLayer } from './layers/terrain';
 import { ParcelsLayer } from './layers/parcels';
 import { CrimeLayer } from './layers/crime';
 import { HistoryLayer } from './layers/history';
 import { TransitLayer } from './layers/transit';
 import { CamerasLayer } from './layers/cameras';
+import { PhotorealLayer, getStoredKey, storeKey } from './layers/photoreal';
 import { localToLL, llToLocal } from './geo/projection';
+import { loadTerrain } from './geo/terrain';
 import {
   initPopup,
   showLoading,
@@ -26,19 +29,23 @@ import { initConcierge } from './ui/concierge';
 const app = document.getElementById('app')!;
 const city = createScene(app);
 
-const buildings = new BuildingsLayer();
-const streets = new StreetsLayer();
+const terrain = new TerrainLayer();
+const buildings = new MetroBuildingsLayer();
+const streets = new MetroStreetsLayer();
 const crime = new CrimeLayer();
 const parcels = new ParcelsLayer(city.scene);
-const history = new HistoryLayer(city.scene);
+const history = new HistoryLayer(terrain);
 const transit = new TransitLayer();
 const cameras = new CamerasLayer();
+const photoreal = new PhotorealLayer(city.camera, city.renderer, (msg) => setStatus(msg));
 
+city.scene.add(terrain.group);
 city.scene.add(buildings.group);
 city.scene.add(streets.group);
 city.scene.add(crime.group);
 city.scene.add(transit.group);
 city.scene.add(cameras.group);
+city.scene.add(photoreal.group);
 
 // ── UI wiring ────────────────────────────────────────────────
 initPopup();
@@ -76,9 +83,53 @@ setInterval(() => {
   if (layerState.get('buses')) vitals.setTransit(lastTransitStatus, true);
 }, 5000);
 
+function applyNight(on: boolean) {
+  city.setNightMode(on);
+  buildings.setNightMode(on);
+  streets.setNightMode(on);
+  terrain.setNightMode(on);
+}
+
+// ── photoreal mode (optional Google Maps Platform key) ───────
+const photoToggle = document.getElementById('tg-photoreal') as HTMLInputElement;
+const photoKeyWrap = document.getElementById('photoreal-key-wrap')!;
+const photoKeyInput = document.getElementById('photoreal-key') as HTMLInputElement;
+photoKeyInput.value = getStoredKey();
+
+function setPhotoreal(on: boolean) {
+  const key = photoKeyInput.value.trim();
+  if (on && !key) {
+    photoKeyWrap.classList.add('visible', 'needs-key');
+    photoToggle.checked = false;
+    return;
+  }
+  if (on) {
+    storeKey(key);
+    if (!photoreal.enable(key)) return;
+    // photogrammetry replaces the procedural ground + buildings; data
+    // overlays (buses, cameras, crime, parcel picking) stay on top
+    buildings.setVisible(false);
+    terrain.group.visible = false;
+    document.getElementById('photoreal-sub')!.textContent = 'streaming · Google';
+  } else {
+    photoreal.disable();
+    buildings.setVisible(layerState.get('buildings') ?? true);
+    terrain.group.visible = true;
+    document.getElementById('photoreal-sub')!.textContent = 'needs Google Maps key';
+  }
+}
+photoToggle.addEventListener('change', () => {
+  photoKeyWrap.classList.toggle('visible', photoToggle.checked || !photoKeyInput.value);
+  setPhotoreal(photoToggle.checked);
+});
+photoKeyInput.addEventListener('change', () => {
+  storeKey(photoKeyInput.value.trim());
+  if (photoToggle.checked) setPhotoreal(true);
+});
+
 initToolbar({
   onBuildings: (on) => {
-    buildings.setVisible(on);
+    if (!photoreal.active) buildings.setVisible(on);
     markLayer('buildings', on);
   },
   onStreets: (on) => {
@@ -99,11 +150,7 @@ initToolbar({
     cameras.setVisible(on);
     markLayer('cameras', on);
   },
-  onNight: (on) => {
-    city.setNightMode(on);
-    buildings.setNightMode(on);
-    streets.setNightMode(on);
-  },
+  onNight: applyNight,
 });
 
 let currentYear = 2026;
@@ -143,8 +190,9 @@ city.renderer.domElement.addEventListener('pointerup', async (ev) => {
     return;
   }
 
-  const targets: THREE.Object3D[] = [city.groundPlane];
+  const targets: THREE.Object3D[] = [...terrain.raycastTargets, city.groundPlane];
   if (buildings.group.visible) targets.push(buildings.group);
+  if (photoreal.active) targets.push(photoreal.group);
   const hits = raycaster.intersectObjects(targets, true);
   if (!hits.length) return;
 
@@ -177,16 +225,20 @@ document.getElementById('popup-close')!.addEventListener('click', () => {
 
 // ── Data loading ─────────────────────────────────────────────
 async function boot() {
-  setStatus('loading buildings + streets…', true);
+  setStatus('loading terrain…', true);
+  await loadTerrain().catch((e) => console.error('[terrain]', e));
+  await terrain.load().catch((e) => console.error('[terrain]', e));
+  applyNight(true);
+
+  setStatus('streaming metro tiles…', true);
   await Promise.all([
     buildings.load().catch((e) => console.error('[buildings]', e)),
     streets.load().catch((e) => console.error('[streets]', e)),
     transit.loadRoutes(),
   ]);
-  const expanded = buildings.count > 12_000;
-  setStatus(`${buildings.count.toLocaleString()} buildings · ${expanded ? 'Tulsa metro core' : 'downtown Tulsa'}`);
-  setSubtitle(expanded ? '3D digital twin · Tulsa metro' : '3D digital twin · downtown core');
-  vitals.setCoverage(expanded ? 'midtown + downtown' : 'downtown core');
+  setStatus(`${buildings.count.toLocaleString()} buildings · Tulsa metro`);
+  setSubtitle('3D digital twin · Tulsa metro');
+  vitals.setCoverage('full metro');
 
   // crime loads in the background; toggle works once it lands
   crime
@@ -221,7 +273,7 @@ async function boot() {
     });
 }
 
-boot();
+const booted = boot();
 
 // ── Debug/test hook (used by scripts/verify.mjs) ─────────────
 Object.assign(window as unknown as Record<string, unknown>, {
@@ -241,15 +293,21 @@ Object.assign(window as unknown as Record<string, unknown>, {
     },
     cameras: () => cameras.cameras,
     buses: () => transit.buses,
+    tileStats: () => ({ tiles: buildings.loadedTiles, buildings: buildings.count }),
+    fps: () => city.fps,
   },
 });
 
 // ── Intro fly-through (skippable with any input) ─────────────
 const introHint = document.getElementById('intro-hint')!;
-city.playIntro(() => introHint.classList.add('gone'));
+void booted.then(() => city.playIntro(() => introHint.classList.add('gone')));
 
 // ── Render loop ──────────────────────────────────────────────
 city.renderer.setAnimationLoop(() => {
   city.controls.update();
+  const t = city.controls.target;
+  void buildings.update(t.x, t.z);
+  void streets.update(t.x, t.z);
+  photoreal.update();
   city.render();
 });

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { llToLocal, METRO_BBOX } from '../geo/projection';
+import { elevation } from '../geo/terrain';
 import { fetchWithRetry } from '../data/cache';
 import { decodeVehiclePositions, type BusPosition } from '../data/gtfsrt';
 
@@ -204,10 +205,11 @@ export class TransitLayer {
     for (let i = 0; i < this.buses.length; i++) {
       const bus = this.buses[i];
       const [x, z] = llToLocal(bus.lon, bus.lat);
+      const busY = elevation(x, z) + BUS_Y;
       // GTFS bearing: degrees clockwise from north. Scene: north = -Z.
       const heading = bus.bearing !== null ? THREE.MathUtils.degToRad(-bus.bearing) + Math.PI : 0;
       q.setFromAxisAngle(up, heading);
-      m.compose(new THREE.Vector3(x, BUS_Y, z), q, scale);
+      m.compose(new THREE.Vector3(x, busY, z), q, scale);
       this.bodies.setMatrixAt(i, m);
 
       const meta = this.routes[bus.routeId];
@@ -220,7 +222,7 @@ export class TransitLayer {
       this.bodies.setColorAt(i, color);
 
       this.beaconPos[i * 3] = x;
-      this.beaconPos[i * 3 + 1] = BUS_Y + 22;
+      this.beaconPos[i * 3 + 1] = busY + 22;
       this.beaconPos[i * 3 + 2] = z;
       this.beaconCol[i * 3] = color.r;
       this.beaconCol[i * 3 + 1] = color.g;
@@ -228,7 +230,7 @@ export class TransitLayer {
 
       if (bus.bearing !== null) {
         const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(q).multiplyScalar(19);
-        m.compose(new THREE.Vector3(x + fwd.x, BUS_Y, z + fwd.z), q, scale);
+        m.compose(new THREE.Vector3(x + fwd.x, busY, z + fwd.z), q, scale);
         this.arrows.setColorAt(arrowCount, color.clone().lerp(new THREE.Color(0xffffff), 0.35));
         this.arrows.setMatrixAt(arrowCount++, m);
       }

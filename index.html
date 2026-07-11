@@ -186,6 +186,18 @@
       }
       #crime-filter.visible { display: block; }
 
+      #photoreal-key-wrap { display: none; margin: -3px 0 9px; }
+      #photoreal-key-wrap.visible { display: block; }
+      #photoreal-key-wrap.needs-key #photoreal-key { border-color: var(--accent-warm); }
+      #photoreal-key {
+        width: 100%;
+        background: rgba(10, 16, 24, 0.8);
+        border: 1px solid var(--border); border-radius: 6px;
+        color: var(--text); font-size: 10.5px; padding: 5px 8px;
+        font-family: var(--mono); outline: none;
+      }
+      #photoreal-key-wrap .key-note { font-size: 8.5px; color: var(--text-dim); margin-top: 3px; }
+
       /* ── Parcel / camera popup (left of vitals) ─── */
       #popup {
         display: none;
@@ -356,6 +368,18 @@
             <div class="toggle-sub">cinematic lighting + lit windows</div>
           </span>
         </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="tg-photoreal" />
+          <span class="toggle-track"></span>
+          <span>
+            <span class="toggle-label">Photoreal (Google 3D)</span>
+            <div class="toggle-sub" id="photoreal-sub">needs Google Maps key</div>
+          </span>
+        </label>
+        <div id="photoreal-key-wrap">
+          <input id="photoreal-key" type="password" placeholder="Google Maps Platform API key" autocomplete="off" />
+          <div class="key-note">Map Tiles API key · stored in your browser only</div>
+        </div>
 
         <h3>Layers</h3>
         <label class="toggle-row">
@@ -427,7 +451,7 @@
     <div id="status" class="panel"><span class="dot" id="status-dot"></span><span id="status-text">initializing…</span></div>
 
     <div id="attribution" class="panel">
-      © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> · INCOG · City of Tulsa · OCC 1943 · Tulsa Transit · ODOT
+      © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> · Microsoft footprints · USGS 3DEP/NAIP · INCOG · City of Tulsa · OCC 1943 · Tulsa Transit · ODOT
     </div>
 
     <div id="intro-hint" class="panel">click to skip intro</div>

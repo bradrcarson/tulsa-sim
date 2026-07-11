@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { llToLocal, METRO_BBOX } from '../geo/projection';
+import { elevation } from '../geo/terrain';
 import { fetchWithRetry } from '../data/cache';
 
 /**
@@ -153,7 +154,9 @@ export class CrimeLayer {
       const col = colorFor(t);
       const g = new THREE.PlaneGeometry(CELL_METERS * 0.96, CELL_METERS * 0.96);
       g.rotateX(-Math.PI / 2);
-      g.translate((cx + 0.5) * CELL_METERS, 2.2 + t * 2, (cz + 0.5) * CELL_METERS);
+      const wx = (cx + 0.5) * CELL_METERS;
+      const wz = (cz + 0.5) * CELL_METERS;
+      g.translate(wx, elevation(wx, wz) + 3.5 + t * 2, wz);
       const n = g.getAttribute('position').count;
       const colors = new Float32Array(n * 4);
       const alpha = 0.16 + t * 0.65; // additive: sparse cells glow faintly, hotspots burn

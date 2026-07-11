@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { llToLocal } from '../geo/projection';
+import { elevation } from '../geo/terrain';
 import { fetchWithRetry } from '../data/cache';
 
 /**
@@ -81,14 +82,15 @@ export class CamerasLayer {
     const mastVerts = new Float32Array(n * 6);
     for (let i = 0; i < n; i++) {
       const [x, z] = llToLocal(this.cameras[i].lon, this.cameras[i].lat);
+      const base = elevation(x, z);
       pos[i * 3] = x;
-      pos[i * 3 + 1] = MARKER_Y;
+      pos[i * 3 + 1] = base + MARKER_Y;
       pos[i * 3 + 2] = z;
       mastVerts[i * 6] = x;
-      mastVerts[i * 6 + 1] = 0;
+      mastVerts[i * 6 + 1] = base;
       mastVerts[i * 6 + 2] = z;
       mastVerts[i * 6 + 3] = x;
-      mastVerts[i * 6 + 4] = MARKER_Y;
+      mastVerts[i * 6 + 4] = base + MARKER_Y;
       mastVerts[i * 6 + 5] = z;
     }
 
