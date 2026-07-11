@@ -1,0 +1,92 @@
+{
+ "110": {
+  "short": "110",
+  "long": "MLK/Hartford",
+  "color": "007ac2"
+ },
+ "114": {
+  "short": "114",
+  "long": "Charles Page/Sand Springs",
+  "color": "009365"
+ },
+ "117": {
+  "short": "117",
+  "long": "Union/Southwest Blvd",
+  "color": "5b2e91"
+ },
+ "130": {
+  "short": "130",
+  "long": "Admiral",
+  "color": "9fd5b9"
+ },
+ "140": {
+  "short": "140",
+  "long": "11th Street",
+  "color": "ee1d23"
+ },
+ "150": {
+  "short": "150",
+  "long": "21st Street",
+  "color": "bc9905"
+ },
+ "201": {
+  "short": "201",
+  "long": "Pine/Memorial",
+  "color": "246932"
+ },
+ "250": {
+  "short": "250",
+  "long": "Crosstown",
+  "color": "000000"
+ },
+ "300": {
+  "short": "300",
+  "long": "31st Street",
+  "color": "9D3D97"
+ },
+ "320": {
+  "short": "320",
+  "long": "Sheridan",
+  "color": "F7BFC0"
+ },
+ "410": {
+  "short": "410",
+  "long": "Lewis",
+  "color": "F15D22"
+ },
+ "440": {
+  "short": "440",
+  "long": "Harvard",
+  "color": "F05B89"
+ },
+ "450": {
+  "short": "450",
+  "long": "Yale",
+  "color": "034EA2"
+ },
+ "470": {
+  "short": "470",
+  "long": "Garnett",
+  "color": "00aeef"
+ },
+ "490": {
+  "short": "490",
+  "long": "West Tulsa/71st",
+  "color": "F79433"
+ },
+ "500": {
+  "short": "500",
+  "long": "500 Connector",
+  "color": "465CA9"
+ },
+ "700": {
+  "short": "700",
+  "long": "Peoria AERO",
+  "color": "00A68A"
+ },
+ "900": {
+  "short": "900",
+  "long": "Express Route",
+  "color": "962F34"
+ }
+}
