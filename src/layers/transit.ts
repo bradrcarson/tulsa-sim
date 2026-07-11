@@ -32,6 +32,21 @@ export interface TransitStatus {
   error: boolean;
 }
 
+/** Soft radial glow sprite for the beacon points. */
+function glowTexture(): THREE.Texture {
+  const size = 64;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d')!;
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 2, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(cv);
+}
+
 /** Stable hue from a route id when GTFS static colors are unavailable. */
 function routeFallbackColor(routeId: string): THREE.Color {
   let h = 0;
@@ -60,18 +75,30 @@ export class TransitLayer {
     // bus body — box with slightly rounded feel via scaled sphere cap is
     // overkill; a 12×4×3.2 m box reads as "bus" at city scale
     const bodyGeom = new THREE.BoxGeometry(4, 3.2, 12);
-    const bodyMat = new THREE.MeshLambertMaterial({ emissiveIntensity: 0.9 });
+    // basic (unlit) so route colors stay saturated in night mode
+    const bodyMat = new THREE.MeshBasicMaterial();
     this.bodies = new THREE.InstancedMesh(bodyGeom, bodyMat, MAX_BUSES);
     this.bodies.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // pre-create the color buffer: instanceColor added after first render
+    // doesn't trigger a shader recompile, leaving instances black
+    this.bodies.instanceColor = new THREE.InstancedBufferAttribute(
+      new Float32Array(MAX_BUSES * 3).fill(1),
+      3,
+    );
     this.bodies.count = 0;
     this.group.add(this.bodies);
 
     // heading arrow — small cone ahead of the body
     const arrowGeom = new THREE.ConeGeometry(2.2, 5, 6);
     arrowGeom.rotateX(Math.PI / 2); // point along +Z (local forward)
-    const arrowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+    // per-instance route color (white blows out under night bloom)
+    const arrowMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.8 });
     this.arrows = new THREE.InstancedMesh(arrowGeom, arrowMat, MAX_BUSES);
     this.arrows.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.arrows.instanceColor = new THREE.InstancedBufferAttribute(
+      new Float32Array(MAX_BUSES * 3).fill(1),
+      3,
+    );
     this.arrows.count = 0;
     this.group.add(this.arrows);
 
@@ -83,11 +110,13 @@ export class TransitLayer {
     beaconGeom.setAttribute('color', new THREE.BufferAttribute(this.beaconCol, 3));
     beaconGeom.setDrawRange(0, 0);
     const beaconMat = new THREE.PointsMaterial({
-      size: 26,
+      size: 18,
       sizeAttenuation: true,
       vertexColors: true,
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.55,
+      map: glowTexture(),
+      alphaTest: 0.01,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -167,7 +196,8 @@ export class TransitLayer {
   private rebuildInstances() {
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
-    const scale = new THREE.Vector3(1, 1, 1);
+    // oversized ~2× for legibility at city zoom (nycsim-style markers)
+    const scale = new THREE.Vector3(2.2, 2.2, 2.2);
     const up = new THREE.Vector3(0, 1, 0);
     let arrowCount = 0;
 
@@ -182,18 +212,24 @@ export class TransitLayer {
 
       const meta = this.routes[bus.routeId];
       const color = meta ? new THREE.Color('#' + meta.color) : routeFallbackColor(bus.routeId);
+      // GTFS brand colors are tuned for white backgrounds — lift lightness
+      // so the fleet stays legible against the night city
+      const hsl = { h: 0, s: 0, l: 0 };
+      color.getHSL(hsl);
+      color.setHSL(hsl.h, Math.max(hsl.s, 0.6), Math.max(hsl.l, 0.58));
       this.bodies.setColorAt(i, color);
 
       this.beaconPos[i * 3] = x;
-      this.beaconPos[i * 3 + 1] = BUS_Y + 14;
+      this.beaconPos[i * 3 + 1] = BUS_Y + 22;
       this.beaconPos[i * 3 + 2] = z;
       this.beaconCol[i * 3] = color.r;
       this.beaconCol[i * 3 + 1] = color.g;
       this.beaconCol[i * 3 + 2] = color.b;
 
       if (bus.bearing !== null) {
-        const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(q).multiplyScalar(9);
+        const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(q).multiplyScalar(19);
         m.compose(new THREE.Vector3(x + fwd.x, BUS_Y, z + fwd.z), q, scale);
+        this.arrows.setColorAt(arrowCount, color.clone().lerp(new THREE.Color(0xffffff), 0.35));
         this.arrows.setMatrixAt(arrowCount++, m);
       }
     }
@@ -203,6 +239,7 @@ export class TransitLayer {
     if (this.bodies.instanceColor) this.bodies.instanceColor.needsUpdate = true;
     this.arrows.count = arrowCount;
     this.arrows.instanceMatrix.needsUpdate = true;
+    if (this.arrows.instanceColor) this.arrows.instanceColor.needsUpdate = true;
     this.beacons.geometry.setDrawRange(0, this.buses.length);
     this.beacons.geometry.attributes.position.needsUpdate = true;
     this.beacons.geometry.attributes.color.needsUpdate = true;

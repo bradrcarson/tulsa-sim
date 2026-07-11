@@ -7,7 +7,7 @@ import { CrimeLayer } from './layers/crime';
 import { HistoryLayer } from './layers/history';
 import { TransitLayer } from './layers/transit';
 import { CamerasLayer } from './layers/cameras';
-import { localToLL } from './geo/projection';
+import { localToLL, llToLocal } from './geo/projection';
 import {
   initPopup,
   showLoading,
@@ -222,6 +222,27 @@ async function boot() {
 }
 
 boot();
+
+// ── Debug/test hook (used by scripts/verify.mjs) ─────────────
+Object.assign(window as unknown as Record<string, unknown>, {
+  __sim: {
+    flyToLL: (lon: number, lat: number, dist?: number) => {
+      const [x, z] = llToLocal(lon, lat);
+      city.flyTo(x, z, dist);
+    },
+    /** Project a lat/lon (at marker height) to CSS pixel coordinates. */
+    screenPos: (lon: number, lat: number, y = 26) => {
+      const [x, z] = llToLocal(lon, lat);
+      const v = new THREE.Vector3(x, y, z).project(city.camera);
+      return {
+        x: ((v.x + 1) / 2) * window.innerWidth,
+        y: ((1 - v.y) / 2) * window.innerHeight,
+      };
+    },
+    cameras: () => cameras.cameras,
+    buses: () => transit.buses,
+  },
+});
 
 // ── Intro fly-through (skippable with any input) ─────────────
 const introHint = document.getElementById('intro-hint')!;

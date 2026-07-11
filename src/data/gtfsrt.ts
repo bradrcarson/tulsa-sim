@@ -56,9 +56,13 @@ class Reader {
       case 1:
         this.pos += 8;
         break;
-      case 2:
-        this.pos += this.varint();
+      case 2: {
+        // NB: must read the varint before touching this.pos — `this.pos +=
+        // this.varint()` captures the pre-varint position and desyncs.
+        const len = this.varint();
+        this.pos += len;
         break;
+      }
       case 5:
         this.pos += 4;
         break;

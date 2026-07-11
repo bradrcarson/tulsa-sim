@@ -34,17 +34,17 @@ const MODES = {
     ground: 0x0b0f16,
   },
   day: {
-    bg: 0x8fb6d9,
-    fogColor: 0x9fc3e0,
-    fogDensity: 0.00008,
-    hemiSky: 0xcfe5ff,
-    hemiGround: 0x6a747f,
-    hemiIntensity: 0.9,
+    bg: 0xa9cbe8,
+    fogColor: 0xb4d2ea,
+    fogDensity: 0.00007,
+    hemiSky: 0xdfeeff,
+    hemiGround: 0x8b949e,
+    hemiIntensity: 1.25,
     keyColor: 0xfff2dd, // afternoon sun
-    keyIntensity: 1.6,
-    fillColor: 0x88aacc,
-    fillIntensity: 0.4,
-    ground: 0x39424d,
+    keyIntensity: 2.0,
+    fillColor: 0x9db8d4,
+    fillIntensity: 0.5,
+    ground: 0x4a545f,
   },
 };
 
