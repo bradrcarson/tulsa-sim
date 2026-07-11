@@ -237,6 +237,112 @@ function parseOsmHeight(tags = {}) {
   return -1;
 }
 
+// ── lidar heights (optional; produced by scripts/bake-lidar.mjs) ──
+// DSM/ground rasters over the ±6 km inner city. Heights measured from
+// lidar beat every other source where enough returns hit the footprint.
+function loadLidarGrid() {
+  const path = resolve(CACHE, 'lidar-grid.bin');
+  if (!existsSync(path)) {
+    console.log('  (no lidar-grid.bin — run scripts/bake-lidar.mjs for measured heights)');
+    return null;
+  }
+  const buf = readFileSync(path);
+  const minX = buf.readFloatLE(0);
+  const minZ = buf.readFloatLE(4);
+  const res = buf.readFloatLE(8);
+  const w = buf.readUInt32LE(12);
+  const h = buf.readUInt32LE(16);
+  const dsm = new Float32Array(buf.buffer, buf.byteOffset + 24, w * h);
+  console.log(`  lidar grid: ${w}×${h} @ ${res} m`);
+  return { minX, minZ, res, w, h, dsm };
+}
+
+function loadTerrainGrid() {
+  const path = resolve(OUT, 'terrain.bin');
+  if (!existsSync(path)) return null;
+  const buf = readFileSync(path);
+  const minX = buf.readDoubleLE(0);
+  const minZ = buf.readDoubleLE(8);
+  const dx = buf.readDoubleLE(16);
+  const dz = buf.readDoubleLE(24);
+  const w = buf.readUInt32LE(32);
+  const h = buf.readUInt32LE(36);
+  const data = new Int16Array(buf.buffer, buf.byteOffset + 40, w * h);
+  return {
+    at(x, z) {
+      const c = Math.max(0, Math.min(w - 1, Math.round((x - minX) / dx)));
+      const r = Math.max(0, Math.min(h - 1, Math.round((z - minZ) / dz)));
+      return data[r * w + c] / 10;
+    },
+  };
+}
+
+/**
+ * Measured height for one footprint: percentile of DSM cells inside the
+ * ring minus the DEM base (same terrain surface the runtime stands
+ * buildings on). Median for small footprints damps tree overhang; P90
+ * for big/complex structures catches the tower core instead of podium
+ * edges. Returns -1 when the footprint has too few lidar returns.
+ */
+function lidarHeightFor(lidar, dem, ring, bbox, area, holes) {
+  if (!lidar || !dem) return -1;
+  const [minX, minZ, maxX, maxZ] = bbox;
+  if (minX < lidar.minX || minZ < lidar.minZ) return -1;
+  if (maxX > lidar.minX + lidar.w * lidar.res || maxZ > lidar.minZ + lidar.h * lidar.res) return -1;
+  const samples = [];
+  const step = area > 20000 ? lidar.res * 2 : lidar.res;
+  outer: for (let z = minZ; z <= maxZ; z += step) {
+    for (let x = minX; x <= maxX; x += step) {
+      if (!pointInRing(x, z, ring)) continue;
+      // skip cells belonging to a separate building nested inside this
+      // footprint (block-wide podium polygons must not inherit the height
+      // of the tower that stands on them)
+      if (holes) {
+        let masked = false;
+        for (const h2 of holes) {
+          if (pointInRing(x, z, h2)) { masked = true; break; }
+        }
+        if (masked) continue;
+      }
+      const c = Math.floor((x - lidar.minX) / lidar.res);
+      const r = Math.floor((z - lidar.minZ) / lidar.res);
+      const v = lidar.dsm[r * lidar.w + c];
+      if (v > -9999) samples.push(v);
+      if (samples.length > 60000) break outer; // plenty for percentiles
+    }
+  }
+  if (samples.length < 5) return -1;
+  samples.sort((a, b) => a - b);
+  const base = dem.at((minX + maxX) / 2, (minZ + maxZ) / 2);
+  const n = samples.length;
+  const p50 = samples[Math.floor(n * 0.5)] - base;
+  if (area <= 700) {
+    // houses / small commercial: median damps tree overhang + noise.
+    // Small footprints reading very tall are masts/chimneys/water towers,
+    // not buildings — reject and let other sources decide.
+    if (p50 > 60) return -1;
+    return p50 >= 2.2 && p50 < 340 ? p50 : -1;
+  }
+  // large footprints (often a whole block containing a tower + podium):
+  // take the highest *flat plateau* — a 4 m height band holding enough
+  // cells to be a real roof (~100 m²). Masts, antennas, and lidar noise
+  // clouds (e.g. power-plant plumes flagged class 18) are vertically
+  // spread and never form a tight band with that much support.
+  const minSupport = Math.max(25, Math.floor(n * 0.03));
+  const BAND = 4; // meters
+  const bins = new Map();
+  for (const s of samples) {
+    const b2 = Math.floor((s - base) / BAND);
+    bins.set(b2, (bins.get(b2) ?? 0) + 1);
+  }
+  let h = p50;
+  for (const [bin, count] of bins) {
+    const bandH = (bin + 0.5) * BAND;
+    if (bandH > h && count >= minSupport) h = bandH;
+  }
+  return h >= 2.2 && h < 340 ? h : -1;
+}
+
 // ── buildings ────────────────────────────────────────────────
 async function bakeBuildings() {
   console.log('Buildings: hybrid OSM footprints + Microsoft ML gap fill');
@@ -371,7 +477,49 @@ async function bakeBuildings() {
     b.lu = c >= 0 && c < lu.W && r >= 0 && r < lu.H ? lu.grid[r * lu.W + c] : 0;
   }
 
-  // 5. resolve unknown heights: seeded 3.5–8 m (residential scale)
+  // 5a. lidar-measured heights (top priority where the rasters cover)
+  const lidar = loadLidarGrid();
+  const dem = loadTerrainGrid();
+  if (lidar && dem) {
+    // spatial hash of centroids so big block polygons can mask out nested
+    // buildings (a plaza polygon must not inherit its tower's height)
+    const cHash = new Map();
+    for (const b of buildings) {
+      const key = Math.floor(b.cx / CELL) + ':' + Math.floor(b.cz / CELL);
+      (cHash.get(key) ?? cHash.set(key, []).get(key)).push(b);
+    }
+    const holesFor = (b, area) => {
+      if (area < 2500) return null;
+      const holes = [];
+      for (let cx = Math.floor(b.bbox[0] / CELL); cx <= Math.floor(b.bbox[2] / CELL); cx++) {
+        for (let cz = Math.floor(b.bbox[1] / CELL); cz <= Math.floor(b.bbox[3] / CELL); cz++) {
+          for (const o of cHash.get(cx + ':' + cz) ?? []) {
+            if (o !== b && pointInRing(o.cx, o.cz, b.ring)) holes.push(o.ring);
+          }
+        }
+      }
+      return holes.length ? holes : null;
+    };
+    let measured = 0, keptTag = 0;
+    for (const b of buildings) {
+      const area = Math.abs(ringArea([...b.ring, b.ring[0]]));
+      const lh = lidarHeightFor(lidar, dem, b.ring, b.bbox, area, holesFor(b, area));
+      if (lh < 0) continue;
+      // surveyed OSM tags are never lowered by lidar (sparse returns can
+      // miss a roof); lidar wins only when it measures clearly taller
+      // (stale tags / level-count guesses)
+      if (b.tagged && b.h > 0 && lh < b.h * 1.25) {
+        keptTag++;
+        continue;
+      }
+      b.h = lh;
+      b.lidar = true;
+      measured++;
+    }
+    console.log(`  lidar heights: ${measured} measured, ${keptTag} agreeing OSM tags kept`);
+  }
+
+  // 5b. resolve unknown heights: seeded 3.5–8 m (residential scale)
   const hash01 = (x, y) => {
     const s2 = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
     return s2 - Math.floor(s2);

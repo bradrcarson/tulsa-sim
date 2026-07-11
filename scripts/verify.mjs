@@ -112,29 +112,33 @@ const camSub = await page.textContent('#cameras-sub');
 check('cameras loaded', /\d+ in metro/.test(camSub), camSub.trim());
 
 // fly to a known camera (via the __sim test hook), project its marker to
-// screen pixels, then click it
-const camTarget = await page.evaluate(() => {
-  const cams = window.__sim.cameras();
-  // pick a camera near downtown so the fly-to is short
-  const cam = cams.reduce((best, c) => {
-    const d = (c2) => Math.hypot(c2.lat - 36.154, c2.lon + 95.9928);
-    return d(c) < d(best) ? c : best;
-  }, cams[0]);
-  window.__sim.flyToLL(cam.lon, cam.lat, 400);
-  return cam;
-});
-await page.waitForTimeout(1800); // fly animation
-const camScreen = await page.evaluate(
-  ({ lon, lat }) => window.__sim.screenPos(lon, lat),
-  camTarget,
-);
-await page.mouse.click(camScreen.x, camScreen.y);
-await page.waitForTimeout(600);
-const camPopupOpen = await page.evaluate(
-  () =>
-    document.getElementById('popup')?.classList.contains('open') &&
-    (document.getElementById('popup-title')?.textContent ?? '').includes('Camera'),
-);
+// screen pixels, then click it. Downtown towers (lidar heights) can occlude
+// a marker from the fly-to angle, so try the nearest few cameras in turn.
+let camPopupOpen = false;
+let camTarget = null;
+for (let attempt = 0; attempt < 3 && !camPopupOpen; attempt++) {
+  camTarget = await page.evaluate((skip) => {
+    const cams = [...window.__sim.cameras()].sort(
+      (a, b) =>
+        Math.hypot(a.lat - 36.154, a.lon + 95.9928) - Math.hypot(b.lat - 36.154, b.lon + 95.9928),
+    );
+    const cam = cams[skip];
+    window.__sim.flyToLL(cam.lon, cam.lat, 320);
+    return cam;
+  }, attempt);
+  await page.waitForTimeout(2200); // fly animation
+  const camScreen = await page.evaluate(
+    ({ lon, lat }) => window.__sim.screenPos(lon, lat),
+    camTarget,
+  );
+  await page.mouse.click(camScreen.x, camScreen.y);
+  await page.waitForTimeout(800);
+  camPopupOpen = await page.evaluate(
+    () =>
+      document.getElementById('popup')?.classList.contains('open') &&
+      (document.getElementById('popup-title')?.textContent ?? '').includes('Camera'),
+  );
+}
 check('camera marker click opens card', camPopupOpen, camTarget.loc);
 if (camPopupOpen) {
   const body = await page.textContent('#popup-body');
