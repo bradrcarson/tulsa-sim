@@ -1,13 +1,16 @@
 /**
- * Headless verification of the Phase 1 + Phase 2 checklists. Captures:
- *  1. Intro fly-through frame (cinematic swoop)
+ * Headless verification of the Phase 1–3 checklists. Captures:
+ *  1. Intro fly-through frame (cinematic swoop over the metro)
  *  2. Night-mode 3D city view + City Vitals panel (clock + weather)
  *  3. Live buses toggle (≥1 marker or honest "no vehicles" state)
  *  4. Traffic cameras toggle + click → camera detail card
  *  5. Parcel click popup (INCOG assessor data)
  *  6. Crime heatmap toggle
- *  7. 1943 aerial time scrub
- *  8. Day mode (night toggle off)
+ *  7. 1943 aerial time scrub (terrain-draped)
+ *  8. Day mode with USGS aerial imagery + terrain
+ *  9. Downtown facade close-up (window shader)
+ * Phase 3 checks: full-metro tile streaming, terrain elevation, photoreal
+ * toggle key-gate.
  * Run: node scripts/verify.mjs  (dev server must be running on :5173)
  */
 import { chromium } from 'playwright-core';
@@ -41,16 +44,22 @@ check('intro fly-through frame captured', true);
 // 2 — wait for buildings; City Vitals must show a ticking clock + weather
 await page.waitForFunction(
   () => document.getElementById('status-text')?.textContent?.includes('buildings'),
-  { timeout: 90000 },
+  { timeout: 120000 },
 );
-await page.waitForTimeout(3000); // let frames render + settle post-intro
+// let the tile streamer settle (all LODs built around downtown)
+await page.waitForFunction(() => window.__sim.tileStats().tiles > 200, { timeout: 120000 });
+await page.waitForTimeout(3000);
 const status = await page.textContent('#status-text');
 check('buildings loaded', /[\d,]+ buildings/.test(status), status.trim());
 check(
-  'expanded coverage (beyond Phase 1 downtown ~9.5k)',
-  Number(status.replace(/,/g, '').match(/(\d+) buildings/)?.[1] ?? 0) > 15000,
+  'full-metro coverage (Phase 3: >150k buildings)',
+  Number(status.replace(/,/g, '').match(/(\d+) buildings/)?.[1] ?? 0) > 150000,
   status.trim(),
 );
+const tileStats = await page.evaluate(() => window.__sim.tileStats());
+check('tile streaming active', tileStats.tiles > 200, `${tileStats.tiles} tiles resident`);
+const elevOk = await page.evaluate(() => window.__sim.elevationAt(-95.9928, 36.154) !== null);
+check('terrain heightfield loaded', elevOk);
 
 const clock1 = await page.textContent('#vt-clock');
 await page.waitForTimeout(1500);
@@ -175,7 +184,10 @@ check('crime heatmap data', /calls|incidents/.test(crimeSub), crimeSub.trim());
 await page.screenshot({ path: `${OUT}/6-crime-heatmap.png` });
 await page.click('label:has(#tg-crime)'); // off again
 
-// 7 — scrub timeline to 1943
+// 7 — scrub timeline to 1943 (fly back over downtown first: the historic
+// drape covers the 12 km inset around the origin)
+await page.evaluate(() => window.__sim.flyToLL(-95.9928, 36.154, 3200));
+await page.waitForTimeout(1900);
 await page.locator('#tl-slider').fill('1943');
 await page.locator('#tl-slider').dispatchEvent('input');
 await page.waitForTimeout(9000); // aerial exportImage fetch + texture upload
@@ -186,11 +198,31 @@ await page.locator('#tl-slider').fill('2026');
 await page.locator('#tl-slider').dispatchEvent('input');
 await page.waitForTimeout(800);
 
-// 8 — day mode (night toggle off)
+// 8 — day mode with aerial imagery + terrain relief
 await page.click('label:has(#tg-night)');
-await page.waitForTimeout(1200);
-await page.screenshot({ path: `${OUT}/8-day-mode.png` });
-check('day mode screenshot captured', true);
+await page.evaluate(() => window.__sim.flyToLL(-96.005, 36.125, 2600)); // Arkansas River bend
+await page.waitForTimeout(2500);
+await page.screenshot({ path: `${OUT}/8-day-terrain.png` });
+check('day mode + terrain screenshot captured', true);
+
+// 9 — downtown facade close-up (window shader) back in night mode
+await page.click('label:has(#tg-night)');
+await page.evaluate(() => window.__sim.flyToLL(-95.9921, 36.1557, 420)); // BOK Tower block
+await page.waitForTimeout(2500);
+await page.screenshot({ path: `${OUT}/9-facades-night.png` });
+check('facade close-up captured', true);
+
+// 10 — photoreal toggle is key-gated (no key → hint, no crash)
+await page.click('label:has(#tg-photoreal)');
+await page.waitForTimeout(400);
+const keyGate = await page.evaluate(() => ({
+  visible: document.getElementById('photoreal-key-wrap')?.classList.contains('visible'),
+  toggledOff: !document.getElementById('tg-photoreal')?.checked,
+}));
+check('photoreal key-gate works', keyGate.visible === true && keyGate.toggledOff === true);
+
+const fps = await page.evaluate(() => window.__sim.fps());
+console.log(`INFO: fps (SwiftShader software rasterizer): ${fps.toFixed(1)}`);
 
 await browser.close();
 if (failures > 0) {

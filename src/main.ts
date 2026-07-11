@@ -10,7 +10,7 @@ import { TransitLayer } from './layers/transit';
 import { CamerasLayer } from './layers/cameras';
 import { PhotorealLayer, getStoredKey, storeKey } from './layers/photoreal';
 import { localToLL, llToLocal } from './geo/projection';
-import { loadTerrain } from './geo/terrain';
+import { loadTerrain, terrainReady, elevation } from './geo/terrain';
 import {
   initPopup,
   showLoading,
@@ -295,6 +295,16 @@ Object.assign(window as unknown as Record<string, unknown>, {
     buses: () => transit.buses,
     tileStats: () => ({ tiles: buildings.loadedTiles, buildings: buildings.count }),
     fps: () => city.fps,
+    renderInfo: () => ({
+      calls: city.renderer.info.render.calls,
+      triangles: city.renderer.info.render.triangles,
+      geometries: city.renderer.info.memory.geometries,
+    }),
+    elevationAt: (lon: number, lat: number) => {
+      if (!terrainReady()) return null;
+      const [x, z] = llToLocal(lon, lat);
+      return elevation(x, z);
+    },
   },
 });
 
